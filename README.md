@@ -5,6 +5,36 @@ applications, alarms, an ION connectivity monitor and flow search. Switch betwee
 
 Not an official Palo Alto Networks product; provided as-is under the [MIT licence](LICENSE).
 
+## Screenshots
+
+**Overview, Health issues:** the fair and poor sites, links and apps from Prisma AIOps, with the likely cause.
+
+![Overview, Health issues](docs/screenshots/overview-tenant.png)
+
+**Overview, Applications:** the applications across all sites, sorted by the highest connection failure percentage.
+
+![Overview, Applications sorted by Conn fail %](docs/screenshots/apps-conn-fail.png)
+
+**Overview, Map view:** the sites and the VPN tunnels between them, coloured by state and health.
+
+![Overview, map view](docs/screenshots/overview-map.png)
+
+**Site details:** devices, circuits (latency, jitter, loss, p95 and peak use), LQM and probes, and top applications.
+
+![Site details](docs/screenshots/site-details.png)
+
+**Flow Search:** flow records for one or more sites, with policy, path and app names.
+
+![Flow Search](docs/screenshots/flow-search.png)
+
+**Flow Search, Domains summary:** the domains seen in the results, grouped by organization.
+
+![Flow Search, Domains summary](docs/screenshots/flow-domains.png)
+
+**Flow Search, Apps summary:** the applications seen in the results, with the domains seen for each.
+
+![Flow Search, Apps summary](docs/screenshots/flow-apps.png)
+
 ## Start
 
 You need Python 3.10 or newer. Open a terminal in the Monitor's folder and run:
