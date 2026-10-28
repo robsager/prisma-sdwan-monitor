@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flow Search · Prisma SD-WAN</title>
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/flows.css">
+  <script src="/static/js/theme.js"></script>
+  <script type="module" src="/static/js/flows.js"></script>
+  <script defer src="/static/vendor/alpinejs-3.17.4.min.js"></script>
+</head>
+<body x-data="flowSearch" x-cloak>
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Prisma SD-WAN Monitor <span class="app-version" x-text="version && 'v' + version"></span></h1>
+      <nav class="nav-tabs">
+        <a href="/#/">Overview</a>
+        <a href="/flows" class="active" aria-current="page">Flow Search</a>
+        <a href="/?ionlog#/">ION Connectivity Monitor</a>
+      </nav>
+    </div>
+    <div class="topbar-controls">
+      <label for="tenant-select" class="sr-only">Tenant</label>
+      <select id="tenant-select" aria-label="Select tenant" x-show="tenants.length" x-model="tsg" @change="switchTenant()">
+        <template x-for="t in tenants" :key="t.tsg_id">
+          <option :value="t.tsg_id" x-text="`${t.name} (${t.tsg_id})`" :selected="t.tsg_id === tsg"></option>
+        </template>
+      </select>
+      <button type="button" class="btn theme-btn" @click="toggleTheme()"></button>
+    </div>
+  </header>
+
+  <main class="flows-main">
+    <section class="empty" x-show="tenantsLoaded && !tenants.length">
+      <h2>No tenants yet</h2>
+      <p>Add a Prisma SASE service account under <strong>Manage tenants</strong> on the Overview, then come back here.</p>
+      <a class="btn primary" href="/#/">Open the Overview</a>
+    </section>
+
+    <template x-if="tsg">
+      <div>
+        <p class="notice error" x-show="authError" x-text="`Could not load this tenant: ${authError}`"></p>
+        <p class="notice error" x-show="searchError" x-text="searchError"></p>
+        <p class="notice" x-show="notes.policies" x-text="`Policy names: ${notes.policies}`"></p>
+        <p class="notice" x-show="notes.paths" x-text="`Path names: ${notes.paths}`"></p>
+        <p class="notice" x-show="notes.apps">Couldn't load application names, so apps show as numeric IDs
+          (<span x-text="notes.apps"></span>). <button type="button" class="link-btn accent" @click="notes.apps = ''; loadApps()">Try again</button></p>
+
+        <!-- Search form ----------------------------------------------------------------------- -->
+        <section class="card search-card" aria-label="Search">
+          <div class="form-grid">
+            <div class="field f-sites picker">
+              <span class="field-label">Sites <span class="req" aria-hidden="true">*</span></span>
+              <button type="button" class="picker-btn" :disabled="!sitesReady" @click="siteMenu = !siteMenu" :aria-expanded="siteMenu"
+                      x-text="!sitesReady ? 'Loading sites…' : selectedSites.length ? `${selectedSites.length} selected` : 'Select at least one site…'"></button>
+              <div class="picker-panel" x-show="siteMenu" @click.outside="siteMenu = false" @keydown.escape="siteMenu = false">
+                <input type="search" x-model="siteSearch" placeholder="Search sites…" aria-label="Search sites">
+                <div class="picker-list">
+                  <template x-for="s in siteMatches" :key="s.id">
+                    <label class="picker-item"><input type="checkbox" :checked="selectedSites.includes(s.id)" @change="toggleIn(selectedSites, s.id)"><span x-text="s.name"></span></label>
+                  </template>
+                  <div class="picker-empty" x-show="!siteMatches.length">No sites match</div>
+                </div>
+                <div class="picker-foot" x-show="selectedSites.length"><button type="button" class="link-btn accent" @click="selectedSites = []">Clear selection</button></div>
+              </div>
+              <div class="tags">
+                <template x-for="id in selectedSites" :key="id">
+                  <span class="tag"><span x-text="siteName(id)"></span><button type="button" :aria-label="`Remove ${siteName(id)}`" @click="toggleIn(selectedSites, id)">✕</button></span>
+                </template>
+              </div>
+              <span class="field-error" x-show="siteMissing">Select at least one site</span>
+            </div>
+
+            <div class="field f-range">
+              <span class="field-label">Time range
+                <span class="last-btns"><strong>Last</strong>
+                  <template x-for="[mins, text] in M.LAST_BUTTONS" :key="mins">
+                    <button type="button" class="quick-btn" :class="isLast(mins) && 'active'" :aria-pressed="isLast(mins)" @click="setLast(mins)"
+                            :disabled="needsFilter(mins)" :title="lastTitle(mins)" x-text="text"></button>
+                  </template>
+                </span>
+              </span>
+              <div class="range-row">
+                <button type="button" class="btn btn-sm" @click="step(-1)" :disabled="!canStepBack"
+                        :title="canStepBack ? 'Move the whole range back by its length' : `Flow history goes back ${M.MAX_AGE_DAYS} days`" x-text="stepText(-1)"></button>
+                <input type="datetime-local" x-model="startTime" :min="oldestInput" @change="startPicked()" aria-label="Start">
+                <span class="muted">to</span>
+                <input type="datetime-local" x-model="endTime" :min="oldestInput" aria-label="End">
+                <button type="button" class="btn btn-sm" @click="step(1)" :disabled="!canStepForward" title="Move the whole range forward by its length (up to now)" x-text="stepText(1)"></button>
+              </div>
+              <div class="range-note" x-text="rangeSummary"></div>
+              <div class="range-note warn" x-show="startTooOld" x-text="`Flow history goes back ${M.MAX_AGE_DAYS} days: pick a later start.`"></div>
+              <div class="range-note warn" x-show="rangeChanged" x-text="rangeChanged ? rangeChangedText : ''"></div>
+            </div>
+
+            <div class="field f-ip">
+              <label class="field-label" for="f-ip" x-text="ipLabel"></label>
+              <div class="inline">
+                <input id="f-ip" type="text" x-model="ipAddress" placeholder="e.g. 192.168.1.100">
+                <select x-model="ipMode" aria-label="Which side the IP address is on">
+                  <option value="source">Source</option><option value="dest">Destination</option><option value="either">Either</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field f-port">
+              <label class="field-label" for="f-ports">Dest port / protocol (optional)</label>
+              <div class="inline">
+                <input id="f-ports" type="text" x-model="destPorts" placeholder="e.g. 443, 8443">
+                <select x-model="protocol" aria-label="Protocol">
+                  <option value="">Any</option><option value="6">TCP</option><option value="17">UDP</option><option value="1">ICMP</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field f-apps picker">
+              <span class="field-label">Application (optional)</span>
+              <button type="button" class="picker-btn" :disabled="appsLoading" @click="appMenu = !appMenu" :aria-expanded="appMenu"
+                      x-text="appsLoading ? 'Loading applications…' : selectedApps.length ? `${selectedApps.length} selected` : 'All applications'"></button>
+              <div class="picker-panel" x-show="appMenu" @click.outside="appMenu = false" @keydown.escape="appMenu = false">
+                <template x-if="appMenu">
+                  <div class="picker-inner">
+                    <input type="search" x-model="appSearch" placeholder="Search apps…" aria-label="Search apps">
+                    <div class="picker-list">
+                      <template x-for="a in appMatches" :key="a.id">
+                        <label class="picker-item"><input type="checkbox" :checked="selectedApps.includes(a.id)" @change="toggleIn(selectedApps, a.id)"><span x-text="a.name"></span></label>
+                      </template>
+                      <div class="picker-empty" x-show="!appMatches.length">No apps match</div>
+                    </div>
+                    <div class="picker-foot"><span class="muted small" x-text="`${appMatches.length} shown`"></span>
+                      <button type="button" class="link-btn accent" x-show="selectedApps.length" @click="selectedApps = []">Clear selection</button></div>
+                  </div>
+                </template>
+              </div>
+              <div class="tags">
+                <template x-for="id in selectedApps" :key="id">
+                  <span class="tag"><span x-text="appLabel(id)"></span><button type="button" :aria-label="`Remove ${appLabel(id)}`" @click="toggleIn(selectedApps, id)">✕</button></span>
+                </template>
+              </div>
+            </div>
+
+            <div class="field f-rows">
+              <label class="field-label" for="f-rows">Rows per page</label>
+              <select id="f-rows" x-model.number="perPage" @change="setPerPage()">
+                <template x-for="n in [25, 50, 100, 250, 500, 1000]" :key="n"><option :value="n" x-text="n" :selected="n === perPage"></option></template>
+              </select>
+            </div>
+          </div>
+
+          <div class="search-actions">
+            <button type="button" class="btn primary" @click="search()" :disabled="searching">
+              <span class="spinner" x-show="searching"></span><span x-text="searching ? 'Searching…' : 'Search flows'"></span>
+            </button>
+            <button type="button" class="btn primary" x-show="searching && rangeChanged" @click="searchNewRange()" :disabled="!jobId"
+                    title="Stop the running search and search the newly picked range instead">Search the new range instead</button>
+            <button type="button" class="btn" x-show="searching && jobId" @click="stopSearch()" :disabled="stopping"
+                    title="Stop fetching; keep the flows loaded so far" x-text="stopping ? 'Stopping…' : 'Stop'"></button>
+            <button type="button" class="btn btn-sm help-btn" @click="openHelp()" title="How a search works, and what every column means">HELP</button>
+          </div>
+          <p class="hint err" x-show="!searching && rangeNeedsFilter">Searches over 4 hours need an application or IP address filter:
+            unfiltered, a busy site has hundreds of thousands of flows a day, an hour or more of fetching. These filters are applied by the
+            API, so fewer flows are fetched.</p>
+
+          <div class="progress-panel" x-show="progress.total">
+            <div class="notice check" x-show="searching && paused && !stopping">
+              <span class="grow"><strong x-text="`Paused at ${flowCount.toLocaleString()} flows.`"></strong>
+                Every flow is kept in this tab, so large searches can slow it down or run it out of memory.
+                <span x-text="estimateText"></span></span>
+              <button type="button" class="btn btn-sm" @click="resumeSearch()" :disabled="resuming || stopping" x-text="`Keep going (${softCap.toLocaleString()} more)`"></button>
+              <button type="button" class="btn btn-sm" @click="stopSearch()" :disabled="stopping">Stop here</button>
+            </div>
+            <div class="check" :class="largeEstimate ? 'notice' : 'muted small'" x-show="searching && !paused && !stopping && estimate && (largeEstimate || estimate.seconds >= 60)">
+              <span class="grow" x-text="estimateText"></span>
+              <button type="button" class="btn btn-sm" x-show="largeEstimate" @click="stopSearch()" :disabled="stopping">Stop here</button>
+            </div>
+            <div class="progress-row" x-show="searching && progress.windowsTotal">
+              <span class="progress-bar" :class="{ paused, busy: progress.windowsActive && !paused }" role="progressbar" aria-label="Search progress"
+                    aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progressPercent"><span :style="{ width: `${progressPercent}%` }"></span></span>
+              <span x-text="progressText"></span>
+            </div>
+            <div class="progress-summary">
+              <span x-text="`${progress.completed.length} of ${progress.total} sites complete · ${flowCount.toLocaleString()} flows loaded`"></span>
+              <span x-show="cachedText" x-text="`· ${cachedText}`"></span>
+              <span x-show="searching">— results update as each batch arrives</span>
+            </div>
+            <div class="chips">
+              <template x-for="id in siteIds" :key="id">
+                <span class="chip" :class="progress.completed.includes(id) ? 'done' : 'pending'"><span class="dot"></span><span x-text="`${siteName(id)} · ${siteFlowCount(id).toLocaleString()}`"></span></span>
+              </template>
+            </div>
+          </div>
+        </section>
+
+        <!-- Results ------------------------------------------------------------------------------ -->
+        <template x-if="searched">
+          <section class="card results" aria-label="Results">
+            <div class="notice" x-show="siteErrors.length">
+              <strong x-text="siteErrors.length < siteIds.length ? 'Some sites failed to load:' : 'Flows failed to load:'"></strong>
+              <ul><template x-for="e in siteErrors" :key="e.id"><li><span x-text="e.name"></span>: <span x-text="e.text"></span></li></template></ul>
+            </div>
+            <div class="notice" x-show="siteWarnings.length">
+              <strong>Results incomplete:</strong>
+              <ul><template x-for="w in siteWarnings" :key="w.id"><li><strong x-text="w.name"></strong>: showing <span x-text="w.count.toLocaleString()"></span> — <span x-text="w.text"></span></li></template></ul>
+            </div>
+
+            <div class="results-bar results-head">
+              <div class="bar-group">
+                <strong>Results</strong>
+                <button type="button" class="btn btn-sm" x-show="filteredFlows.length" @click="downloadCsv()">Download CSV</button>
+                <button type="button" class="btn btn-sm" @click="showApiQuery()">View API query</button>
+              </div>
+              <div class="bar-group summary-group" x-show="activeFlows.length">
+                <span class="muted small">Summary:</span>
+                <button type="button" class="btn btn-sm btn-prominent summary-btn" @click="openSummary('domains')" title="Domains seen, grouped by organization (e.g. *.google.com)">Domains</button>
+                <button type="button" class="btn btn-sm btn-prominent summary-btn" @click="openSummary('apps')" title="Applications seen, with the domains seen for each">Apps</button>
+              </div>
+              <span class="muted small flow-count" x-text="`${filteredFlows.length.toLocaleString()} flow${filteredFlows.length === 1 ? '' : 's'}`"></span>
+            </div>
+
+            <div class="results-bar tools">
+              <div class="bar-group">
+                <input type="search" class="ip-filter" x-model.debounce.200ms="view.ipFilter" placeholder="Filter by IP…" aria-label="Filter by IP">
+                <span class="seg" role="group" aria-label="Which IP the filter matches">
+                  <template x-for="[mode, text] in [['or', 'Src or Dst'], ['src', 'Source'], ['dst', 'Dest']]" :key="mode">
+                    <button type="button" :class="view.ipFilterMode === mode && 'active'" :aria-pressed="view.ipFilterMode === mode" @click="view.ipFilterMode = mode" x-text="text"></button>
+                  </template>
+                </span>
+                <button type="button" class="btn btn-sm" x-show="filterCount" @click="clearFilters()" x-text="`Clear column filters (${filterCount})`"></button>
+              </div>
+              <div class="bar-group groups">
+                <span class="bar-label" x-show="anyGroupOffered" title="Click a button to add its columns to the table; its button then moves above those columns, click it there to remove them">Add columns:</span>
+                <template x-for="g in M.GROUP_ORDER" :key="g">
+                  <span class="contents">
+                    <span class="sep" aria-hidden="true" x-show="g === 'flowstats' && statsSeparator"></span>
+                    <button type="button" class="btn btn-sm toggle-btn" x-show="groupOffered(g)" @click="toggleGroup(g)" :title="`Add the ${M.GROUPS[g].what}. Its button then moves above them: click it there to remove them`" x-text="M.GROUPS[g].label"></button>
+                  </span>
+                </template>
+              </div>
+              <div class="bar-group quick-group">
+                <span class="bar-label" title="Click a filter to show only those flows, click it again to remove it">Show only:</span>
+                <button type="button" class="btn btn-sm quick" :class="quickOn('init_success') && 'active'" :aria-pressed="quickOn('init_success')" @click="toggleQuick('init_success')"
+                        title="Only flows whose connection setup failed (Init OK = No). Click again to remove the filter">Init failed</button>
+                <button type="button" class="btn btn-sm quick" :class="quickOn('return_traffic') && 'active'" :aria-pressed="quickOn('return_traffic')" @click="toggleQuick('return_traffic')"
+                        title="Only flows that sent packets but got none back (Return = No). Click again to remove the filter">No return traffic</button>
+                <button type="button" class="btn btn-sm quick" :class="quickOn('assurance', 'Flow Move') && 'active'" :aria-pressed="quickOn('assurance', 'Flow Move')" @click="toggleQuick('assurance', 'Flow Move')"
+                        title="Only flows a performance policy (Move Flows) put on their path (Assurance = Flow Move). Click again to remove the filter">Flow moved</button>
+              </div>
+              <div class="bar-group view-group" @click.outside="colMenu.open = false" @keydown.escape.window="colMenu.open = false">
+                <button type="button" class="btn btn-sm" @click="resetView()" :disabled="viewIsDefault"
+                        :title="viewIsDefault ? 'Already showing the default view' : 'Show the default columns and clear the column filters'">Default view</button>
+                <button type="button" class="btn btn-sm" @click="resetWidths()" :disabled="!anyResized"
+                        :title="anyResized ? 'Every column back to its automatic width' : 'Drag a column edge to resize it, double-click it to fit the widest value'">Reset widths</button>
+                <button type="button" class="btn btn-sm help-btn" @click="openHelp('help-columns')" title="What every column means">HELP</button>
+                <button type="button" class="btn btn-sm" @click="openColMenu($event)" :aria-expanded="colMenu.open"
+                        x-text="`Columns${hiddenCount ? ` (${hiddenCount} hidden)` : ''} ▾`"></button>
+                <div class="menu-panel" x-show="colMenu.open" :style="{ left: `${colMenu.x}px`, top: `${colMenu.y}px` }">
+                  <div class="picker-list">
+                    <template x-for="col in M.COLUMNS" :key="col.key">
+                      <label class="picker-item" :title="col.title || ''"><input type="checkbox" :checked="!hidden[col.key]" @change="setHidden({ [col.key]: !$event.target.checked }); $event.target.checked = !hidden[col.key]"><span x-text="col.label"></span></label>
+                    </template>
+                  </div>
+                  <div class="picker-foot"><button type="button" class="link-btn accent" @click="showAll()">Show all</button>
+                    <button type="button" class="link-btn accent" @click="colMenu.open = false">Done</button></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="empty-results" x-show="!activeFlows.length">
+              <p><strong x-text="searching ? 'Waiting for the first batch…' : 'No flows found'"></strong></p>
+              <p class="muted" x-text="searching ? 'Each request to the flows API takes around 10 seconds.' : 'No flows match the search for this time range.'"></p>
+            </div>
+
+            <template x-if="activeFlows.length">
+              <div>
+                <!-- A scrollbar above the table too (the table's own is at the bottom of a long page), kept in step. -->
+                <div class="scroll-top" x-ref="scrollTop" @scroll="$refs.scrollBody.scrollLeft = $el.scrollLeft"><div :style="{ width: `${tableWidth}px` }"></div></div>
+                <div class="scroll-body" x-ref="scrollBody" @scroll="$refs.scrollTop.scrollLeft = $el.scrollLeft">
+                  <table class="flow-table" :style="{ width: `${tableWidth}px` }">
+                    <colgroup><template x-for="col in visibleColumns" :key="col.key"><col :style="{ width: `${colWidth(col.key)}px` }"></template></colgroup>
+                    <thead>
+                      <tr class="group-row" x-show="groupRuns.some((r) => r.group)">
+                        <template x-for="run in groupRuns" :key="run.key">
+                          <th :colspan="run.span"><button type="button" class="btn btn-sm primary group-btn" x-show="run.group" @click="toggleGroup(run.group)"
+                                                          :aria-label="run.group ? `Remove ${M.GROUPS[run.group].label}` : ''"
+                                                          :title="run.group ? `Remove the ${M.GROUPS[run.group].what} (the button goes back to Add columns)` : ''" x-text="run.group ? M.GROUPS[run.group].label : ''"></button></th>
+                        </template>
+                      </tr>
+                      <tr>
+                        <template x-for="col in visibleColumns" :key="col.key">
+                          <th :title="col.title || ''" :aria-sort="ariaSort(col)" :class="col.sort && 'sortable'" @click="sortBy(col)">
+                            <span x-text="col.label"></span><span class="loading-note" x-show="col.policy && policiesLoading"> (loading…)</span><span class="sort-mark" x-text="sortMark(col)"></span>
+                            <button type="button" class="col-filter-btn" :class="isFiltered(col.key) && 'active'" @click.stop="openFilter(col, $event)" :aria-label="`Filter ${col.label}`">▾</button>
+                            <span class="col-resizer" :class="resizing === col.key && 'active'" title="Drag to resize · double-click to fit the widest value"
+                                  @pointerdown.stop.prevent="startResize(col.key, $event)" @click.stop @dblclick.stop="fitColumn(col.key)"></span>
+                          </th>
+                        </template>
+                      </tr>
+                    </thead>
+                    <tbody @mouseover="clippedTip($event)">
+                      <template x-for="f in pageFlows" :key="rowKey(f)">
+                        <tr>
+                          <template x-for="col in visibleColumns" :key="col.key">
+                            <td :class="cellClass(col, f)" :title="cellTip(col.key, f)">
+                              <span :class="pillClass(col.key, f)" x-text="cellText(col.key, f)"></span><button type="button" class="copy-btn"
+                                x-show="col.key === 'domain' && f.unknown_domain" @click.stop="copy(f.unknown_domain)" title="Copy domain" aria-label="Copy domain">⧉</button>
+                              <div class="sub" :class="col.key === 'action' && 'c-critical'" x-show="cellSub(col.key, f)" x-text="cellSub(col.key, f)"></div>
+                            </td>
+                          </template>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="pager-row" x-show="pages > 1">
+                  <span class="muted" x-text="`Showing ${(firstRow + 1).toLocaleString()} to ${Math.min(firstRow + perPage, filteredFlows.length).toLocaleString()} of ${filteredFlows.length.toLocaleString()} flows`"></span>
+                  <span class="pager">
+                    <button type="button" class="btn btn-sm" @click="view.page = 1" :disabled="page === 1">First</button>
+                    <button type="button" class="btn btn-sm" @click="view.page = page - 1" :disabled="page === 1" aria-label="Previous page">‹</button>
+                    <span x-text="`Page ${page} of ${pages}`"></span>
+                    <button type="button" class="btn btn-sm" @click="view.page = page + 1" :disabled="page === pages" aria-label="Next page">›</button>
+                    <button type="button" class="btn btn-sm" @click="view.page = pages" :disabled="page === pages">Last</button>
+                  </span>
+                </div>
+                <div class="results-total">Total: <strong x-text="filteredFlows.length.toLocaleString()"></strong>
+                  <span x-text="`flow${filteredFlows.length === 1 ? '' : 's'}`"></span>
+                  <span class="muted" x-show="filteredFlows.length !== activeFlows.length" x-text="`(filtered from ${activeFlows.length.toLocaleString()})`"></span>
+                  <span class="muted" x-show="searching">· search still running</span>
+                </div>
+              </div>
+            </template>
+          </section>
+        </template>
+      </div>
+    </template>
+  </main>
+
+  <!-- Column filter (fixed, so the table's scroll box doesn't clip it) -------------------------- -->
+  <div class="col-filter-pop" x-show="colFilter.open" :style="{ left: `${colFilter.x}px`, top: `${colFilter.y}px` }"
+       @click.outside="colFilter.open = false" @keydown.escape.window="colFilter.open = false">
+    <div class="head" x-text="`Filter: ${colFilter.label}`"></div>
+    <div class="search">
+      <input type="search" x-model="colFilter.search" x-ref="filterSearch" placeholder="Search values…" aria-label="Search values">
+      <div class="row"><button type="button" class="link-btn accent" @click="setFilterMatches(true)" x-text="colFilter.search ? 'Select matches' : 'Select all'"></button>
+        <button type="button" class="link-btn accent" @click="setFilterMatches(false)" x-text="colFilter.search ? 'Clear matches' : 'Clear all'"></button></div>
+    </div>
+    <div class="list">
+      <template x-for="v in filterShown" :key="v.value">
+        <label class="item"><input type="checkbox" :checked="!!colFilter.draft[v.value]" @change="toggleFilterValue(v.value)">
+          <span class="val" x-text="v.value === '' ? '(blank)' : v.value" :title="v.value"></span><span class="cnt" x-text="v.count.toLocaleString()"></span></label>
+      </template>
+      <div class="picker-empty" x-show="!filterMatches.length">No values match</div>
+      <div class="picker-empty" x-show="filterMatches.length > filterShown.length" x-text="`Showing ${filterShown.length} of ${filterMatches.length.toLocaleString()} values — type to narrow`"></div>
+    </div>
+    <div class="foot"><span class="muted" x-text="`${filterChecked.toLocaleString()} of ${colFilter.values.length.toLocaleString()} selected`"></span>
+      <span><button type="button" class="btn btn-sm" @click="colFilter.open = false">Cancel</button>
+        <button type="button" class="btn btn-sm primary" @click="applyFilter()" :disabled="!filterChecked">Apply</button></span></div>
+  </div>
+
+  <!-- Domains / Apps summary --------------------------------------------------------------------- -->
+  <dialog class="flows-dialog" x-ref="summaryDialog" aria-labelledby="summary-title" @close="summary.mode = null">
+    <div class="dialog-head">
+      <h2 id="summary-title" x-text="summaryCfg?.title || 'Summary'"></h2>
+      <span><button type="button" class="btn btn-sm" x-show="searching" @click="refreshSummary()" title="Include flows that arrived since this was opened">Refresh</button>
+        <button type="button" class="icon-btn" @click="$refs.summaryDialog.close()" aria-label="Close">✕</button></span>
+    </div>
+    <template x-if="summary.mode && summary.data">
+      <div>
+        <div class="summary-tools">
+          <input type="search" x-model.debounce.150ms="summary.search" :placeholder="summaryCfg.search" :aria-label="summaryCfg.search">
+          <span class="seg" role="group" aria-label="Sort by">
+            <template x-for="[k, t] in [['flows', 'Flows'], ['bytes', 'Bytes'], ['name', 'Name']]" :key="k">
+              <button type="button" :class="summary.sort === k && 'active'" :aria-pressed="summary.sort === k" @click="summary.sort = k" x-text="t"></button>
+            </template>
+          </span>
+        </div>
+        <p class="muted small" x-text="summaryNote"></p>
+        <p class="muted" x-show="!summaryRows.length">Nothing matches.</p>
+        <table class="summary-table" x-show="summaryRows.length">
+          <thead><tr><th x-text="summaryCfg.groupHead"></th><th class="num" x-text="summaryCfg.subHead"></th><th class="num">Flows</th><th class="num">Bytes</th><th></th></tr></thead>
+          <template x-for="g in summaryRows" :key="g.key">
+            <tbody>
+              <tr class="group" @click="toggleSummaryGroup(g.key)" :aria-expanded="!!summary.open[g.key]">
+                <td><span class="caret" x-text="summary.open[g.key] ? '▾' : '▸'"></span><span :class="summary.mode === 'domains' && 'mono'" x-text="g.label"></span></td>
+                <td class="num" x-text="g.subs.length.toLocaleString()"></td>
+                <td class="num" x-text="g.flows.toLocaleString()"></td>
+                <td class="num" x-text="M.formatBytes(g.bytes)"></td>
+                <td class="num"><button type="button" class="link-btn accent" @click.stop="filterToSummary(g)" title="Show only these flows in the table">Filter table</button></td>
+              </tr>
+              <template x-for="s in (summary.open[g.key] ? g.subs : [])" :key="s.name">
+                <tr class="sub">
+                  <td><span class="mono" x-text="s.name"></span><button type="button" class="copy-btn" x-show="s.name !== summaryCfg.noCopy" @click.stop="copy(s.name)" title="Copy" aria-label="Copy">⧉</button></td>
+                  <td></td>
+                  <td class="num" x-text="s.flows.toLocaleString()"></td>
+                  <td class="num" x-text="M.formatBytes(s.bytes)"></td>
+                  <td class="num"><button type="button" class="link-btn accent" @click.stop="filterToSummary(g, s)" title="Show only these flows in the table">Filter table</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </template>
+        </table>
+      </div>
+    </template>
+  </dialog>
+
+  <!-- API query ---------------------------------------------------------------------------------- -->
+  <dialog class="flows-dialog" x-ref="queryDialog" aria-labelledby="query-title">
+    <div class="dialog-head">
+      <h2 id="query-title">API query</h2>
+      <span><button type="button" class="btn btn-sm" @click="copy(apiQueryText)">Copy</button>
+        <button type="button" class="btn btn-sm" @click="downloadApiQuery()">Download</button>
+        <button type="button" class="icon-btn" @click="$refs.queryDialog.close()" aria-label="Close">✕</button></span>
+    </div>
+    <p class="muted small">The flows API only answers for the hour ending at <code>end_time</code>, so the Monitor splits the range into
+      1-hour windows (newest first) and pages each with <code>dest_page</code>, one query per site (and per direction for an
+      Either IP search). Shown: the newest window, page 1.</p>
+    <pre class="query" x-text="apiQueryText"></pre>
+  </dialog>
+
+  <!-- HELP --------------------------------------------------------------------------------------- -->
+  <dialog class="flows-dialog help-dialog" x-ref="helpDialog" aria-labelledby="help-title">
+    <div class="dialog-head">
+      <h2 id="help-title">HELP: how a search works and what each column means</h2>
+      <button type="button" class="icon-btn" @click="$refs.helpDialog.close()" aria-label="Close">✕</button>
+    </div>
+    <div class="help-text">
+      <h3>How a search works</h3>
+      <p>Flow records come from <code>monitor/flows</code>, which keeps <strong>90 days</strong> of history and returns one hour per
+        request, up to 1,000 flows per page. So a search is a job on the server that reads its range hour by hour, newest first, for
+        every site at once, and the table fills in as pages arrive. The API answers about 2 pages every 8–10 s and allows 2 requests at
+        a time per tenant (shared by every tab), so the only way to make a search faster is to read less:</p>
+      <ul>
+        <li><strong>Filters</strong> (IP, destination ports, protocol, applications) are applied by the API, so fewer flows are fetched.
+          Searches over 4 hours need an application or IP filter.</li>
+        <li><strong>Saved hours</strong>: an hour that ended over an hour ago, once read in full, is saved in
+          <code>data/flowcache.db</code> (up to 500 MB) and reused by any later search of the same site with the same filters.</li>
+      </ul>
+      <p>A search pauses every 200,000 flows (every flow is kept in this tab): <em>Keep going</em> or <em>Stop here</em>. <em>Stop</em>
+        keeps what has loaded. A flow open across hours is reported in each, and merged into one row. If one hour fails, the rest of
+        the site's flows still show, with a warning naming the hour. <em>View API query</em> shows the request sent.</p>
+      <h3 id="help-columns">What each column means</h3>
+      <p>Each row is one flow record from the ION: one connection (TCP) or conversation (UDP, ICMP) between a client and a server,
+        reported when it ends or as it ages out. <strong>C2S</strong> = client to server, <strong>S2C</strong> = server to client; the
+        client is whoever started the flow. Hover a column heading for a short version, a cell for per-direction values. Add a group of
+        columns with its <em>+</em> button under <em>Add columns</em>: the button then sits over its columns, and clicking it there
+        (<em>✕</em>) removes them again. <em>Columns</em> turns single columns on and off; <em>-</em> means not reported or doesn't apply.</p>
+      <h3>Who and where</h3>
+      <dl>
+        <dt>Site</dt><dd>The site whose ION recorded the flow.</dd>
+        <dt>Time</dt><dd>When the flow started, in your browser's time zone.</dd>
+        <dt>Source IP / Src Port</dt><dd>The client: the device that opened the flow, and its (usually random) port.</dd>
+        <dt>User</dt><dd>The user signed in on the source IP, when user identification is set up (e.g. <code>domain\user</code>).</dd>
+        <dt>Dest IP / Dst Port</dt><dd>The server and the service port (443 HTTPS, 53 DNS, 389 LDAP…).</dd>
+        <dt>Proto</dt><dd>IP protocol: TCP, UDP, ICMP or another number.</dd>
+        <dt>App</dt><dd>The application the ION identified (Prisma SD-WAN app definitions, including custom apps).</dd>
+        <dt>Domain</dt><dd>The domain name seen for the flow (from DNS or the TLS server name), e.g. <code>chatgpt.com</code>.</dd>
+        <dt>Direction</dt><dd>Which way the flow crossed the ION, e.g. LAN to WAN (branch user out), WAN to LAN (into the site), LAN to LAN.</dd>
+      </dl>
+      <h3>Policy and path</h3>
+      <dl>
+        <dt>Path Policy</dt><dd>The path (network) policy rule that matched: decides which WAN paths the app may use.</dd>
+        <dt>QoS Policy</dt><dd>The priority (QoS) policy rule that matched: decides the traffic class and queue.</dd>
+        <dt>Security Policy</dt><dd>The security (zone firewall) policy rule that matched.</dd>
+        <dt>Path</dt><dd>The WAN path the flow used, e.g. <em>Direct Internet (ISP name)</em> or a VPN to a data center or hub, shown as
+          <em>local circuit → remote site (remote circuit)</em>.</dd>
+        <dt>Path Change</dt><dd>Why the flow moved to another path mid-way (e.g. SLA breach, path down, asymmetry). Blank: it stayed on
+          one path. Underneath, <em>from …</em> is the path it was on before, when the search goes back far enough to include it (hover
+          for every path with times). Path shows where the flow was at the end of the searched range.</dd>
+        <dt>Assurance</dt><dd><em>Flow Move</em> when a performance policy rule with the <em>Move Flows</em> action put the flow on its
+          path, e.g. because another path broke the rule's SLA (SCM's <em>Assurance: Flow Move</em>). Underneath, <em>from …</em> is
+          the path it was kept off and why (e.g. <em>app RTT</em>: the app's round-trip time on that path was over the SLA); hover for
+          every path it was kept off. When the flow moved mid-way (Path Change then says why, e.g. <em>probe_bad_path_change</em>)
+          that's the path it was on before; when it was placed on its path at the start, it's the path flows normally take. The
+          <strong>Flow moved</strong> button shows only these flows.</dd>
+      </dl>
+      <h3>Performance (AppStats)</h3>
+      <dl>
+        <dt>Avg RTT</dt><dd>Network round-trip time, measured by the ION from the TCP handshake and ACKs. High = slow or distant path.</dd>
+        <dt>Avg SRT</dt><dd>Server response time: from a request to the server's first reply. High SRT with normal RTT = a slow server or
+          app, not the network.</dd>
+        <dt>Avg UDP TRT</dt><dd>UDP transaction response time: request to reply for UDP apps (e.g. DNS).</dd>
+      </dl>
+      <h3>Volume (TotalFlowStats, DirectionalFlowStats)</h3>
+      <dl>
+        <dt>Bytes / Packets C2S, S2C</dt><dd>Data sent each way. Downloads are mostly S2C, uploads C2S.</dd>
+        <dt>Total Bytes / Packets</dt><dd>Both directions added up.</dd>
+        <dt>Duration</dt><dd>Flow end minus start. Long flows with little data are usually idle connections kept open (web apps, chat,
+          LDAP, SMB). <em>(open)</em>: still open at the end of the searched range, so this is how long it had been open.</dd>
+        <dt>Within the searched range</dt><dd>Bytes, packets and retransmits count only traffic inside the searched range: a flow that
+          started earlier, or is still open, carried more in total.</dd>
+      </dl>
+      <h3>Retransmits (TCP)</h3>
+      <dl>
+        <dt>Retx Pkts</dt><dd>TCP packets the ION saw sent a second time. Usually a sign of packet loss or congestion, which TCP recovers
+          from: users see slowness, not failure. <strong>"keepalive"</strong> marks 1-byte keepalive probes: on an idle connection the
+          client (browsers every ~45 s) resends one byte the server already acknowledged, so the ION counts it as a retransmit even when
+          it's answered. When a direction's Retx Bytes equals its Retx Pkts, every one was a 1-byte probe, not lost data. Those are left
+          out of Retx % and of sorting.</dd>
+        <dt>Retx %</dt><dd>Real retransmits as a share of all the flow's packets. Under ~1% is normal; a few % and up on many flows of one
+          path or direction points to loss there.</dd>
+        <dt>Retx Bytes</dt><dd>Data retransmitted. Real loss shows full-size segments (~1,300 bytes per packet); 1 byte per packet is probes.</dd>
+      </dl>
+      <p>Retransmits are per flow and network-level. They differ from Site details' <em>failed transactions</em>, an application-level
+        count per app (an exchange that didn't complete, for any reason). Heavy retransmits can cause failed transactions; clean flows
+        with failures point to the server or app.</p>
+      <h3>Voice / video</h3>
+      <dl>
+        <dt>Jitter</dt><dd>Variation in packet delay, worse direction. Above ~30 ms hurts calls.</dd>
+        <dt>Loss</dt><dd>Media packets lost, worse direction. Above ~1% is audible.</dd>
+        <dt>MOS</dt><dd>Estimated call quality, 1 (bad) to 5 (excellent); 4+ is good. Only for media the ION can read: encrypted media
+          such as Teams shows <em>-</em>.</dd>
+      </dl>
+      <h3>Outcome</h3>
+      <dl>
+        <dt>Action</dt><dd>What the ION did: forwarded, or <code>flow_drop</code>. Dropped flows show why underneath (TCP state violation,
+          security deny, no allowed path up…); hover for details.</dd>
+        <dt>End Reason</dt><dd>How the session ended: <code>tcp-fin</code> (normal close), <code>tcp-rst-from-client</code> /
+          <code>-server</code> (reset), <code>aged-out</code> (idle timeout). <em>n/a</em>: not reported by this ION's software (before
+          6.8).</dd>
+        <dt>Init OK (Init Success)</dt><dd>Whether the ION saw the TCP connection set up (the 3-way handshake) complete.
+          <strong>Yes</strong>: it completed. <strong>No</strong>: it did not (no answer, a refusal, or a half-finished handshake).
+          <strong>-</strong>: doesn't apply (UDP, ICMP).</dd>
+        <dt>Return (Return Traffic)</dt><dd>What came back from the server, from the packet counts and TCP flags in the record.
+          <strong>Yes</strong>: the server sent data back. <strong>Reset</strong>: the only reply was a TCP reset (nothing listens on
+          that port, or a host firewall rejected it). <strong>SYN-ACK only</strong>: the server accepted, but the client never sent the
+          final ACK (it gave up, or its ACK took a path the ION didn't see). <strong>No</strong>: forwarded, but nothing came back.
+          <strong>Dropped</strong>: the ION dropped the flow itself (the Action column says why), kept apart from No.
+          <strong>-</strong>: no packets in either direction.</dd>
+        <dt>Security</dt><dd>The security policy action(s) applied, e.g. <code>allow</code>, <code>deny</code>.</dd>
+      </dl>
+      <p><strong>Reading Init OK and Return together</strong> when Init OK is <strong>No</strong>: Return = <strong>No</strong> means
+        nothing answered (often the SYN was sent several times): look at the network path (routing, a firewall or policy drop, or the
+        host is down). <strong>Reset</strong> or <strong>SYN-ACK only</strong>: the server is reachable but refused or the handshake
+        stalled: look at the service or port, not the path.</p>
+      <p><strong>Tip:</strong> many failed connections from one source to many ports or hosts (e.g. 80, 135, 445, 9100) is usually a
+        network scanner or monitoring tool probing for open services, not a user-facing problem. Filter the Source IP column to check.</p>
+      <p><em>Init failed</em> and <em>No return traffic</em> filter the table to Init OK = No and Return = No; an active one shows <em>✓ … ✕</em>: click it again to remove it.
+        <em>No return traffic</em> leaves out dropped flows; pick <strong>Dropped</strong> in the Return column filter to see those.</p>
+    </div>
+  </dialog>
+</body>
+</html>

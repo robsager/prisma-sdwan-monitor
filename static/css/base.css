@@ -1,0 +1,182 @@
+/* Shell: layout, header, buttons, forms, dialogs, tiles, notices, status badges. */
+[x-cloak] { display: none !important; }
+* { box-sizing: border-box; }
+/* Class rules like .loading { display: flex } would otherwise override the hidden attribute. */
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--surface-0);
+  color: var(--text-primary);
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.muted { color: var(--text-muted); }
+.small { font-size: 12px; }
+.faded { opacity: .5; } /* low-sample or stale values */
+code { font-size: 12px; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 24px; background: var(--surface-1); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 5;
+}
+.topbar h1 { font-size: 17px; margin: 0; font-weight: 600; }
+.app-version { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 4px; }
+.topbar-controls { display: flex; gap: 8px; align-items: center; }
+select, input[type=search], input:not([type]), input[type=password] {
+  font: inherit; color: inherit; background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px;
+}
+#tenant-select { min-width: 240px; }
+
+.btn {
+  font: inherit; cursor: pointer; padding: 6px 12px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--critical-text); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-sm { padding: 3px 9px; font-size: 12px; }
+/* ⧉ after a value (a domain in Flow Search, an ION serial number). */
+.copy-btn { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 0 0 0 6px; }
+.copy-btn:hover { color: var(--accent); }
+/* Solid accent, bold, a subtle shadow: an action that fetches more (Load RTT, Flow Search's summaries). */
+.btn-prominent { background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 600; padding: 3px 10px; font-size: 12px;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 40%, transparent); }
+.btn-prominent:hover { background: var(--accent); }
+.btn-prominent:hover:not(:disabled) { filter: brightness(.9); box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 50%, transparent); }
+.icon-btn { background: none; border: 0; color: inherit; font-size: 16px; cursor: pointer; }
+
+main { padding: 20px 24px 48px; max-width: 1500px; margin: 0 auto; }
+.empty { text-align: center; padding: 80px 0; }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+.toolbar input[type=search] { min-width: 260px; }
+.check { display: inline-flex; gap: 6px; align-items: center; color: var(--text-secondary); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+.tile .label { color: var(--text-secondary); font-size: 12px; }
+.tile .value { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .sub { color: var(--text-muted); font-size: 12px; }
+
+.notice {
+  border: 1px solid var(--border); border-left: 4px solid var(--warning);
+  background: var(--surface-1); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;
+}
+.notice.error { border-left-color: var(--critical); }
+.notice pre { white-space: pre-wrap; font-size: 12px; max-height: 240px; overflow: auto; color: var(--text-secondary); }
+
+.loading { display: flex; gap: 10px; align-items: center; color: var(--text-secondary); padding: 24px 0; }
+.spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent); animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Status: color is always paired with an icon shape and a text label/tooltip. */
+.st { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; }
+.st .ico { font-size: 11px; line-height: 1; }
+.st.good { color: var(--good-text); }
+.st.warning { color: var(--warning-text); }
+.st.critical { color: var(--critical-text); }
+
+dialog {
+  width: min(820px, 94vw); border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-1); color: var(--text-primary); padding: 20px 24px;
+}
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+.dialog-head { display: flex; justify-content: space-between; align-items: center; }
+.dialog-head h2 { margin: 0; font-size: 17px; }
+/* HELP: a button in each section, one dialog with a topic per section (Flow Search has its own) */
+.btn.help-btn { font-weight: 600; letter-spacing: .03em; color: var(--accent); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.btn.help-btn:hover { background: var(--accent); color: #fff; }
+.dialog-head .help-btn { margin-left: auto; margin-right: 10px; }
+.help-dialog { width: min(980px, 94vw); max-height: 88vh; overflow: auto; }
+.help-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.help-nav .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.help-text { font-size: 13px; line-height: 1.55; color: var(--text-secondary); }
+.help-text h3 { font-size: 14px; color: var(--text-primary); margin: 18px 0 6px; }
+.help-text p, .help-text ol, .help-text ul { margin: 10px 0; }
+.help-text ol, .help-text ul { padding-left: 20px; }
+.help-text li { margin-bottom: 4px; }
+.help-text dl { display: grid; grid-template-columns: 170px 1fr; gap: 6px 14px; margin: 0; }
+.help-text dt { font-weight: 600; color: var(--text-primary); }
+.help-text dd { margin: 0; }
+.help-text code { font-size: 12px; }
+@media (max-width: 640px) { .help-text dl { grid-template-columns: 1fr; gap: 2px; } .help-text dd { margin-bottom: 8px; } }
+.tenant-table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; }
+.tenant-table th { text-align: left; font-weight: 500; color: var(--text-secondary); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.tenant-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+.tenant-table td:last-child { text-align: right; white-space: nowrap; }
+.tenant-table .btn { padding: 3px 9px; font-size: 12px; }
+#tenant-form h3 { margin: 0 0 10px; font-size: 15px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid2 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.grid2 input { font-size: 14px; }
+.form-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+#form-msg { margin-right: auto; }
+#form-msg.err { color: var(--critical-text); }
+#form-msg.ok { color: var(--good-text); }
+
+.grid2 .check-row { justify-content: flex-end; }
+.grid2 .check-row span { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--text-primary); padding-bottom: 7px; }
+
+.tile .value .of { font-size: 16px; color: var(--text-muted); font-weight: 400; }
+
+/* Threshold colours for every metric value (text-contrast steps of the status palette) */
+.v-good { color: var(--good-text); }
+.v-warning { color: var(--warning-text); }
+.v-critical { color: var(--critical-text); }
+.v { font-weight: 600; }
+
+/* Header tabs (later phases add Flow Search and the ION Connectivity Monitor) */
+.topbar-title { display: flex; align-items: center; gap: 18px; }
+.nav-tabs { display: flex; gap: 4px; }
+.nav-tabs a, .nav-tabs button { font: inherit; font-size: 13px; font-weight: 500; color: var(--text-secondary); text-decoration: none; padding: 5px 12px; border-radius: 6px; border: 0; background: none; cursor: pointer; }
+.nav-tabs a:hover, .nav-tabs button:hover { background: var(--surface-2); color: var(--text-primary); }
+.nav-tabs a.active { background: var(--accent); color: #fff; }
+
+/* Destination prefix pop-up */
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--text-primary); cursor: pointer; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-btn:hover { color: var(--accent); text-decoration: underline; }
+.link-btn:disabled { opacity: .5; cursor: default; }
+.link-btn:disabled:hover { color: var(--text-primary); text-decoration: none; }
+
+/* ---- Overview: one card per site, problems first ---- */
+.crumbs { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 12px; }
+.crumbs a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs .sep { color: var(--text-muted); }
+.crumbs span:last-child { font-weight: 600; }
+
+/* Toasts (bottom right) */
+.toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 200; max-width: min(380px, 92vw); }
+.toast { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface-1);
+  border: 1px solid var(--border); border-left: 4px solid var(--good); box-shadow: 0 4px 14px rgb(0 0 0 / .18); font-size: 13px; }
+.toast.down { border-left-color: var(--critical); }
+.toast > .ico { color: var(--good-text); font-size: 14px; line-height: 1.4; }
+.toast.down > .ico { color: var(--critical-text); }
+.toast > div { flex: 1; }
+.toast .icon-btn { font-size: 13px; color: var(--text-muted); }
+
+/* ION Connectivity Monitor: header button and dialog */
+.nav-tabs button.watching { color: var(--accent); font-weight: 600; }
+.nav-tabs button:disabled { opacity: .5; cursor: default; }
+.watch-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px; animation: watch-pulse 1.6s ease-in-out infinite; }
+@keyframes watch-pulse { 50% { opacity: .3; } }
+.count-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--critical); color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+dialog.ion-dialog { width: min(900px, 94vw); max-height: 88vh; overflow: auto; }
+.ion-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+.ion-field { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; }
+.ion-field input { width: 300px; }
+.ion-table { margin: 6px 0 10px; font-size: 13px; }
+.ion-table .csub { font-size: 11px; }
+.ion-table td { vertical-align: top; }
+.ion-checked { margin-top: 12px; }
+.ion-list-search { width: 320px; margin-left: auto; }
+.ion-table a { color: var(--accent); text-decoration: none; }
+.ion-table a:hover { text-decoration: underline; }

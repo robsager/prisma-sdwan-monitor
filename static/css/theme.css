@@ -1,0 +1,35 @@
+/* Colour tokens shared by the Dashboard (style.css) and Flow Search (flows.html). */
+:root {
+  --surface-0: #f3f3f1;
+  --surface-1: #fcfcfb;
+  --surface-2: #ececea;
+  --border: #dddcd8;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --accent: #2a6bd1;
+  --meter-fill: #5b8ee6;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --good-text: #006300;
+  --warning-text: #8a5a00;
+  --critical-text: #b02a2a;
+  color-scheme: light;
+}
+/* Set by /static/theme.js from the saved choice or the OS setting. */
+:root[data-theme="dark"] {
+  --surface-0: #111110;
+  --surface-1: #1a1a19;
+  --surface-2: #262624;
+  --border: #3a3a37;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #9a998f;
+  --accent: #6f9ff0;
+  --meter-fill: #4f7fd4;
+  --good-text: #0ca30c;
+  --warning-text: #fab219;
+  --critical-text: #ef6b6b;
+  color-scheme: dark;
+}

@@ -1,0 +1,58 @@
+/* Site details: Top applications (table, progress, buttons) and the App details dialog. */
+
+.part.apps .apps-head { gap: 10px; }
+.apps-title { color: var(--text-secondary); }
+.apps-filter { font-size: 12px; padding: 3px 8px; width: 180px; font-weight: 400; }
+.apps-tools { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.apps-refresh { font-size: 12px; color: var(--accent); }
+
+.apps-progress { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
+.apps-progress .bar { position: relative; width: 220px; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; flex: none; }
+.apps-progress .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s ease; }
+.apps-progress .bar.indeterminate > span { position: absolute; width: 35%; animation: apps-progress-slide 1.4s ease-in-out infinite; }
+@keyframes apps-progress-slide { from { left: -35%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .apps-progress .bar.indeterminate > span { animation: none; left: 0; width: 100%; opacity: .5; } }
+
+.apps-table td { white-space: nowrap; vertical-align: middle; }
+.apps-table th .th-sort { font: inherit; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .03em; color: var(--text-secondary);
+  background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
+.apps-table th .th-sort:hover { color: var(--accent); }
+.apps-table th[aria-sort="ascending"] .th-sort, .apps-table th[aria-sort="descending"] .th-sort { color: var(--text-primary); }
+.apps-table tbody tr:nth-child(even) td { background: var(--surface-0); } /* alternate rows, for reading across */
+.apps-table .rank { width: 24px; color: var(--text-muted); font-size: 11px; text-align: right; padding-right: 0; }
+.apps-table td.name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.apps-table .bar { width: 70px; }
+.apps-table .act { text-align: right; }
+.app-bar { display: block; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.app-bar span { display: block; height: 100%; background: var(--meter-fill); border-radius: 3px; }
+.rtt-trend { margin-left: 3px; }
+.app-detail-btn { color: var(--accent); font-size: 12px; }
+.ack-btn { color: var(--accent); font-size: 12px; }
+.app-sites-btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+/* Where an app fails (Overview > Applications) */
+.app-sites-table .act { white-space: nowrap; }
+.app-sites-table .act > * + * { margin-left: 12px; }
+.app-sites-table .act .link-btn { color: var(--accent); font-size: 12px; }
+
+/* App details dialog */
+dialog.app-detail-dialog { width: min(820px, 94vw); max-height: 86vh; overflow: auto; }
+.app-detail-dialog .dialog-head { gap: 12px; position: sticky; top: -16px; background: var(--surface-1); padding-top: 4px; z-index: 1; }
+.app-detail-dialog h2 { margin: 0; font-size: 16px; flex: 1; }
+.app-detail-summary p { margin: 6px 0; }
+.detail-tiles { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; margin: 12px 0 4px; }
+.detail-tiles .tile { padding: 10px 12px; }
+.detail-tiles .tile .value { font-size: 20px; }
+.detail-tiles .tile .sub { font-size: 11px; }
+.detail-h { font-size: 13px; font-weight: 600; margin: 18px 0 6px; }
+.detail-h .small { font-weight: 400; margin-left: 6px; }
+.perf-table, .prefix-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; margin: 4px 0 6px; }
+.perf-table th, .perf-table td { padding: 3px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.perf-table thead th { font-size: 11px; font-weight: 500; color: var(--text-secondary); }
+.perf-table tbody th { font-weight: 500; }
+.perf-table .num, .prefix-table .num { text-align: right; }
+.prefix-tools { display: flex; align-items: center; gap: 12px; margin: 8px 0 10px; }
+.prefix-tools input { flex: 1; max-width: 320px; }
+.prefix-table th, .prefix-table td { padding: 4px 10px; border-top: 1px solid var(--border); text-align: left; }
+.prefix-table thead th { border-top: 0; color: var(--text-secondary); font-weight: 600; }
+.apps-table th.th-plain { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .03em; color: var(--text-secondary); }

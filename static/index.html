@@ -1,0 +1,1472 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prisma SD-WAN</title>
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/overview.css">
+  <link rel="stylesheet" href="/static/css/map.css">
+  <link rel="stylesheet" href="/static/css/site.css">
+  <link rel="stylesheet" href="/static/css/apps.css">
+  <script src="/static/js/theme.js"></script>
+  <script type="module" src="/static/js/app.js"></script>
+  <script defer src="/static/vendor/alpinejs-3.17.4.min.js"></script>
+</head>
+<body x-data="manager" x-cloak>
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Prisma SD-WAN Monitor <span class="app-version" x-text="version && 'v' + version"></span></h1>
+      <nav class="nav-tabs">
+        <a href="#/" :class="route.name === 'overview' && 'active'" :aria-current="route.name === 'overview' ? 'page' : null">Overview</a>
+        <a x-show="route.name === 'site'" :href="`#/site/${encodeURIComponent(route.siteId)}`" class="active" aria-current="page">Site Details</a>
+        <a href="/flows">Flow Search</a>
+        <button type="button" :class="ionWatch && 'watching'" :title="ionButtonTitle" aria-haspopup="dialog" :disabled="!tsg"
+          @click="openIonMonitor()"><span class="watch-dot" aria-hidden="true" x-show="ionWatch"></span><span
+          x-text="ionWatch ? 'Watching IONs' : 'ION Connectivity Monitor'"></span><span class="muted" x-show="ionTerms.length"
+          x-text="` (${ionFilter.trim()})`"></span><span class="count-badge" x-show="ionUnseen" x-text="ionUnseen"></span><span
+          aria-hidden="true" x-show="ionWatch && ionSound"> 🔔</span></button>
+      </nav>
+    </div>
+    <div class="topbar-controls">
+      <label for="tenant-select" class="sr-only">Tenant</label>
+      <select id="tenant-select" aria-label="Select tenant" :disabled="!tenants.length" x-model="tsg" @change="switchTenant()">
+        <template x-if="!tenants.length"><option value="">No tenants</option></template>
+        <template x-for="t in tenants" :key="t.tsg_id">
+          <option :value="t.tsg_id" x-text="`${t.name} (${t.tsg_id})`" :selected="t.tsg_id === tsg"></option>
+        </template>
+      </select>
+      <button class="btn" @click="openTenants()">Manage tenants</button>
+      <button type="button" class="btn theme-btn" @click="toggleTheme()"></button>
+    </div>
+  </header>
+
+  <main>
+    <p class="notice error" x-show="startupError" x-text="startupError"></p>
+
+    <section class="empty" x-show="ready && !tenants.length">
+      <h2>No tenants yet</h2>
+      <p>Add a Prisma SASE service account (TSG ID, client ID, client secret) to get started.</p>
+      <button class="btn primary" @click="openTenants()">Add tenant</button>
+    </section>
+
+    <section x-show="tenants.length">
+      <nav class="crumbs" aria-label="Breadcrumb" x-show="route.name === 'site'">
+        <a href="#/">← Overview</a><span class="sep">/</span><span x-text="siteName(route.siteId)"></span>
+      </nav>
+
+      <!-- Overview ------------------------------------------------------------------------- -->
+      <template x-if="route.name === 'overview'">
+        <div>
+          <div class="toolbar">
+            <input type="search" placeholder="Filter sites…" aria-label="Filter sites" x-model="ui.query" @input="ui.limit = PAGE">
+            <button type="button" class="btn btn-sm help-btn" @click="openHelp('overview')" title="How the Overview is gathered: tiles, site status, how fresh it is">HELP</button>
+          </div>
+
+          <div class="tiles" x-show="overview">
+            <div class="tile">
+              <div class="label">Sites</div>
+              <div class="value" x-text="rows.length"></div>
+              <div class="sub" x-text="overview?.tenant_name || overview?.tsg_id"></div>
+            </div>
+            <div class="tile">
+              <div class="label">Site status</div>
+              <div class="value status-counts" role="group" aria-label="Filter sites by status">
+                <template x-for="c in statusFilters" :key="c.key">
+                  <button type="button" :class="['status-btn', ui.status === c.key && 'active']" :aria-pressed="ui.status === c.key"
+                          :title="ui.status === c.key ? 'Show all sites' : `Show only ${c.label} sites`" @click="filterStatus(c.key)">
+                    <span :class="`v v-${c.key}`" x-text="c.n"></span><span class="of" x-text="c.label"></span>
+                  </button>
+                </template>
+              </div>
+              <div class="sub"><span x-text="`${alarmCount} active alarms`"></span><span
+                x-show="unplaced.count" :title="unplaced.title" x-text="` · ${unplaced.count} not at a site`"></span><span
+                x-show="onDeletedSites.count" :title="`Still listed as active by the controller for sites that no longer exist: ${onDeletedSites.title}`"
+                x-text="` · ${onDeletedSites.count} on deleted sites`"></span></div>
+            </div>
+            <div class="tile">
+              <div class="label">Devices online</div>
+              <div class="value"><button type="button" class="status-btn" @click="openIonList('connected')" :disabled="!devicesOnline.total"
+                title="List the connected IONs"><span x-text="devicesOnline.up"></span><span class="of" x-text="` / ${devicesOnline.total}`"></span></button></div>
+              <div class="sub">
+                <template x-if="devicesOnline.total - devicesOnline.up">
+                  <button type="button" class="link-btn st critical" @click="openIonList()" title="List the disconnected IONs"><span class="ico" aria-hidden="true">✕</span><span x-text="`${devicesOnline.total - devicesOnline.up} disconnected`"></span></button>
+                </template>
+                <template x-if="devicesOnline.total && devicesOnline.total === devicesOnline.up">
+                  <button type="button" class="link-btn st good" @click="openIonList('all')" title="List all IONs"><span class="ico" aria-hidden="true">●</span>all connected</button>
+                </template>
+                <span x-show="!devicesOnline.total">no devices</span>
+                ·
+                <template x-if="devices.error">
+                  <span class="st critical" :title="devices.error"><span class="ico" aria-hidden="true">✕</span>check failed</span>
+                </template>
+                <span x-show="!devices.error && devices.checkedAt" x-text="`checked ${hms(devices.checkedAt)}`"
+                      :title="`Device status is checked every ${DEVICE_POLL_MS / 1000} s`"></span>
+              </div>
+            </div>
+            <div class="tile health-tile">
+              <div class="label">Health</div>
+              <div class="health-rows">
+                <template x-for="r in healthTile.rows" :key="r.label">
+                  <div class="health-row"><span class="hr-label" x-text="r.label"></span>
+                    <span class="muted" x-show="!r.counts && !r.failed">—</span>
+                    <span class="st warning" x-show="r.failed" title="This part of the health query failed; see the Tenant panel"><span class="ico" aria-hidden="true">▲</span>failed</span>
+                    <span class="muted" x-show="r.counts?.none" title="The controller returned no health for these (seen on some tenants)">no data</span>
+                    <template x-for="c in r.counts?.parts || []" :key="c.cat">
+                      <button type="button" :class="['health-btn', healthActive(r.kind, c.cat) && 'active']" :aria-pressed="healthActive(r.kind, c.cat)"
+                              :disabled="!healthClickable(r.kind, c.cat)" :title="`${c.n} ${c.cat} · ${healthTitle(r.kind, c.cat)}`" @click="healthClick(r.kind, c.cat)">
+                        <span :class="['v', c.st && `v-${c.st}`]"><span aria-hidden="true" x-text="c.icon"></span> <span x-text="c.n"></span><span class="sr-only" x-text="` ${c.cat}`"></span></span></button>
+                    </template>
+                  </div>
+                </template>
+              </div>
+              <div class="sub"><span :class="healthTile.sub.st && `st ${healthTile.sub.st}`" x-text="healthTile.sub.text"></span></div>
+            </div>
+          </div>
+
+          <template x-for="e in overview?.errors || []">
+            <div class="notice"><strong>Part of the Overview didn't load.</strong> <span x-text="e"></span></div>
+          </template>
+          <div class="notice error" x-show="loadError"><strong>Could not load the overview.</strong> <span x-text="loadError"></span></div>
+          <div class="filter-note" x-show="overview?.site_filter?.exclude_dc" title="Change under Manage tenants → Edit"
+               x-text="`Showing ${rows.length} of ${overview?.site_filter?.total_sites ?? rows.length} sites (data centers hidden)`"></div>
+          <div class="loading" x-show="loading && !overview"><span class="spinner"></span> Loading sites, circuits and metrics…</div>
+
+          <template x-if="overview">
+            <div>
+              <!-- Tenant panel: AIOps health issues and the tenant's applications -->
+              <section class="site tenant-panel">
+                <div class="site-head"><h2>Tenant</h2><span class="meta" x-text="`health and applications across ${overview.sites.length} sites`"></span>
+                  <button type="button" class="btn btn-sm help-btn" @click="openHelp('tenant')" title="How AIOps health, Health issues and the applications are gathered">HELP</button></div>
+                <template x-if="healthIssues">
+                  <div class="part health-issues">
+                    <div class="part-head">
+                      <button type="button" class="link-btn part-toggle" :aria-expanded="!healthIssuesCollapsed" @click="toggleHealthIssues()"
+                              :title="`${healthIssuesCollapsed ? 'Show' : 'Hide'} the fair and poor sites, links and apps`"><span aria-hidden="true" x-text="healthIssuesCollapsed ? '▸' : '▾'"></span> Health issues</button>
+                      <span class="muted small">· last 3 h</span>
+                      <template x-for="c in healthIssues.summary" :key="c.text">
+                        <span :class="`small v v-${c.st}`"><span aria-hidden="true" x-text="c.icon"></span> <span x-text="c.text"></span></span>
+                      </template>
+                      <span class="muted small" x-show="healthIssues.allGood">· every site, link and app is in good health</span>
+                      <span class="small filter-on" x-show="issuesFilter && !healthIssuesCollapsed">· showing <strong x-text="`${issuesFilter?.cat} ${issuesFilter?.kind}`"></strong> only ·
+                        <button type="button" class="link-btn" @click="issuesFilter = null">Show all</button></span>
+                      <span class="detail-status small" x-show="!healthIssuesCollapsed && (healthIssues.detailLoading || healthIssues.detailRefreshing)" role="status">
+                        <span class="spinner" aria-hidden="true"></span><span x-text="healthIssues.detailLoading
+                          ? 'Loading AIOps intervals and link quality… (up to a minute)' : 'Refreshing AIOps intervals…'"></span></span>
+                    </div>
+                    <div class="muted small" x-show="!healthIssuesCollapsed && issuesFilter && healthIssues.rows.length && !issueRows.length"
+                         x-text="`No ${issuesFilter?.cat} ${issuesFilter?.kind} (last 3 h).`"></div>
+                    <template x-if="!healthIssuesCollapsed && issueRows.length">
+                      <div class="table-scroll"><table class="part-table issues-table">
+                        <thead>
+                          <tr class="src-row"><th colspan="6" class="src-api" title="As Prisma reports it: AIOps health and the topology">From Prisma AIOps</th>
+                            <th class="src-app" title="Not from Prisma: this app's reading of the link's quality in its fair and poor intervals">Estimated by this app</th></tr>
+                          <tr><th>Health</th><th>Type</th><th>Site / app</th><th>Circuit</th><th>To</th>
+                            <th title="AIOps' rating of each 5-minute interval in the last 3 h, oldest first">5-minute intervals, last 3 h</th>
+                            <th class="src-app">Likely cause (links and apps)</th></tr>
+                        </thead>
+                        <tbody>
+                          <template x-for="r in issueRows" :key="r.key">
+                            <tr :data-issue="r.key">
+                              <td :class="`v v-${r.st}`"><span aria-hidden="true" x-text="r.icon"></span> <span x-text="r.cat"></span></td>
+                              <td><span x-text="r.type"></span><div class="small muted" x-show="r.typeNote" :title="r.typeTip || null" x-text="r.typeNote"></div></td>
+                              <td><template x-if="r.name.href"><a :href="r.name.href" x-text="r.name.text"></a></template><span
+                                x-show="!r.name.href" :class="r.name.muted && 'muted'" :title="r.name.title || null" x-text="r.name.text"></span>
+                                <div class="small muted" x-show="r.sub" title="AIOps' health score and sites for this app" x-text="r.sub"></div></td>
+                              <td x-text="r.circuit || '—'" :class="!r.circuit && 'muted'"></td>
+                              <td x-text="r.to || '—'" :class="!r.to && 'muted'"></td>
+                              <td class="intervals" :title="r.intervals?.tip || null">
+                                <template x-if="r.intervals">
+                                  <span class="slot-wrap"><span class="slots" aria-hidden="true"><template x-for="(c, i) in r.intervals.cells" :key="i"><span
+                                    :class="`slot s-${c.st}`" :title="c.tip"></span></template></span> <span class="small muted" x-text="r.intervals.text"></span></span>
+                                </template>
+                                <template x-if="!r.intervals && healthIssues.detailLoading"><span class="cell-loading small"><span class="spinner" aria-hidden="true"></span>Loading…</span></template>
+                                <span class="muted" x-show="!r.intervals && !healthIssues.detailLoading">—</span>
+                              </td>
+                              <td class="cause" :title="r.cause.tip || null">
+                                <template x-for="line in r.cause.lines" :key="line"><div x-text="line"></div></template>
+                                <div class="muted" x-show="r.cause.note" x-text="r.cause.note"></div>
+                                <span class="muted" x-show="r.cause.state === 'none' && !r.cause.note">—</span>
+                                <template x-if="r.cause.state === 'loading'"><span class="cell-loading small"><span class="spinner" aria-hidden="true"></span>Loading…</span></template>
+                              </td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table></div>
+                    </template>
+                    <template x-for="e in healthIssues.errors"><div class="muted small" x-text="e"></div></template>
+                  </div>
+                </template>
+                <div class="part apps tenant-apps">
+                  <div class="part-head apps-head">
+                    <button type="button" class="link-btn part-toggle" :aria-expanded="!tenantAppsCollapsed" @click="toggleTenantApps()"
+                            :title="`${tenantAppsCollapsed ? 'Show' : 'Hide'} the tenant's applications`"><span aria-hidden="true" x-text="tenantAppsCollapsed ? '▸' : '▾'"></span> Applications</button>
+                    <input type="search" class="apps-filter" placeholder="Filter apps…" aria-label="Filter applications"
+                           x-model="panelUi.query" x-show="!tenantAppsCollapsed">
+                    <span class="muted" x-text="`· across ${tenantView.siteText}, last 24 h${tenantView.count ? ` · ${tenantView.count} apps` : ''}`"></span>
+                    <span class="muted" x-show="tenantView.age" :title="tenantView.age?.tip" x-text="`· ${tenantView.age?.text}`"></span>
+                  </div>
+                  <template x-if="!tenantAppsCollapsed">
+                    <div>
+                      <div class="muted small" x-show="tenantView.state === 'loading'">Loading the applications… (one query per 100 sites)</div>
+                      <div class="small st critical" x-show="tenantView.state === 'error'"><span class="ico" aria-hidden="true">✕</span><span x-text="`Couldn't load the applications: ${tenantView.error}`"></span></div>
+                      <div class="small st warning" x-show="tenantView.refreshFailed" :title="tenantView.error">
+                        <span class="ico" aria-hidden="true">▲</span>Refresh failed — showing the last list; retrying shortly</div>
+                      <template x-if="tenantView.state === 'table'">
+                        <div>
+                          <div class="apps-health-row">
+                            <div class="ov-chips apps-health-chips" role="group" aria-label="Filter applications by health" x-show="tenantView.chips.length">
+                              <template x-for="c in tenantView.chips" :key="c.key">
+                                <button type="button" :class="['ov-chip', c.st && `c-${c.st}`, panelUi.health === c.key && 'active']" :aria-pressed="panelUi.health === c.key"
+                                        :title="`Show only ${c.key === 'all' ? 'every' : c.key} apps (AIOps health, last 3 h)`" @click="panelUi.health = c.key; panelUi.showAll = false">
+                                  <span x-text="c.label"></span> <span class="n" x-text="c.n"></span></button>
+                              </template>
+                            </div>
+                            <button type="button" :class="['link-btn', 'apps-sort-link', sortedDesc('conn_pct') && 'active']" :aria-pressed="sortedDesc('conn_pct')"
+                                    title="Sort by Conn fail %, highest first (failed connections as a share of each app's TCP flows)"
+                                    @click="sortDesc('conn_pct'); panelUi.showAll = false">Highest Conn fail %</button>
+                          </div>
+                          <div class="table-scroll"><table class="part-table apps-table">
+                            <thead><tr>
+                              <th class="rank"></th>
+                              <th class="th-plain" title="AIOps health, last 3 h">Health</th>
+                              <th :aria-sort="ariaSort('name')"><button type="button" class="th-sort" title="Sort by Application" @click="sortBy('name')" x-text="'Application' + sortMark('name')"></button></th>
+                              <th class="bar"></th>
+                              <template x-for="c in tenantView.cols.slice(1)" :key="c.key">
+                                <th class="num" :aria-sort="ariaSort(c.key)">
+                                  <button type="button" class="th-sort" :title="(c.title || `Sort by ${c.label}`).replace('the selected period', 'the last 24 h')" @click="sortBy(c.key)" x-text="c.label + sortMark(c.key)"></button></th>
+                              </template>
+                            </tr></thead>
+                            <tbody>
+                              <template x-for="r in tenantView.rows" :key="r.id">
+                                <tr :data-tenant-app="r.id">
+                                  <td class="rank" x-text="r.rank"></td>
+                                  <td :title="r.health.tip"><span :class="r.health.st ? `st ${r.health.st}` : 'muted'" x-text="r.health.text"></span><span class="sr-only" x-text="r.health.tip"></span></td>
+                                  <td class="name"><button type="button" class="link-btn app-sites-btn" :title="`${r.name}: where it fails, per site (last 24 h)`"
+                                          @click="openAppSites(r.id, r.name)" x-text="r.name"></button></td>
+                                  <td class="bar"><span class="app-bar"><span :style="{ width: `${r.bar}%` }"></span></span></td>
+                                  <template x-for="c in tenantView.cols.slice(1)" :key="c.key">
+                                    <td class="num" :title="r.cells[c.key].tip || null">
+                                      <span :class="cellCls(r.cells[c.key])"><span x-text="r.cells[c.key].text"></span><span class="sr-only" x-show="r.cells[c.key].sr" x-text="r.cells[c.key].sr"></span></span></td>
+                                  </template>
+                                </tr>
+                              </template>
+                              <tr x-show="tenantView.empty"><td :colspan="tenantView.cols.length + 3" class="muted" x-text="tenantView.empty"></td></tr>
+                            </tbody>
+                          </table></div>
+                          <button type="button" class="link-btn part-more" x-show="tenantView.more" @click="panelUi.showAll = !panelUi.showAll" x-text="tenantView.more"></button>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </section>
+
+              <div class="ov-controls">
+                <div class="small muted">
+                  <template x-if="filterText">
+                    <span>Showing <span x-text="`${matching.length} of ${rows.length}`"></span> sites:
+                      <strong x-text="filterText"></strong> only ·
+                      <button type="button" class="link-btn" @click="showAllSites()">Show all</button></span>
+                  </template>
+                  <span x-show="!filterText">Click a number under <em>Site status</em> or <em>Health</em> to show only those sites.</span>
+                </div>
+                <div class="ov-switches">
+                  <div class="ov-view" role="group" aria-label="Site type">
+                    <button type="button" :class="ui.type === 'all' && 'active'" :aria-pressed="ui.type === 'all'" @click="filterType('all')"
+                            title="Sites of every type">All</button>
+                    <template x-for="t in SITE_TYPES" :key="t.key">
+                      <button type="button" :class="ui.type === t.key && 'active'" :aria-pressed="ui.type === t.key" @click="filterType(t.key)"
+                              :title="`Show only ${t.title} sites`" x-text="t.label"></button>
+                    </template>
+                  </div>
+                  <div class="ov-view" role="group" aria-label="View">
+                    <button type="button" :class="ui.view === 'cards' && 'active'" :aria-pressed="ui.view === 'cards'" @click="setView('cards')">Cards</button>
+                    <button type="button" :class="ui.view === 'table' && 'active'" :aria-pressed="ui.view === 'table'" @click="setView('table')">Table</button>
+                    <button type="button" :class="ui.view === 'map' && 'active'" :aria-pressed="ui.view === 'map'" @click="setView('map')"
+                            title="Topology: the sites and the VPN tunnels between them">Map</button>
+                  </div>
+                </div>
+              </div>
+
+              <p class="muted" x-show="!matching.length"
+                 x-text="!filterText ? 'No sites match the filter.' : `No ${filterText} sites${ui.query.trim() ? ' match the filter' : ''}.`"></p>
+
+              <div class="overview-grid" x-show="ui.view === 'cards' && matching.length">
+                <template x-for="r in shown" :key="r.site.id">
+                  <a :class="`site-card s-${r.status}`" :href="siteHref(r.site)" :title="`Open ${r.site.name} site details`">
+                    <div class="sc-head">
+                      <span class="sc-name" x-text="r.site.name"></span>
+                      <span :class="r.tag.kind === 'live' ? 'live-badge' : 'not-live'" :title="r.tag.title">
+                        <span class="live-dot" aria-hidden="true" x-show="r.tag.kind === 'live'"></span><span x-text="r.tag.text"></span>
+                      </span>
+                      <span :class="`sc-status st ${r.status}`" x-text="STATUS_LABEL[r.status]"></span>
+                    </div>
+                    <div class="sc-meta" x-text="[siteRole(r.site.role), r.site.city, r.site.country].filter(Boolean).join(' · ')"></div>
+                    <div class="sc-stats">
+                      <span title="ION devices connected"
+                            x-text="r.site.devices.length ? `${r.online}/${r.site.devices.length} ION${r.site.devices.length === 1 ? '' : 's'} online` : 'No devices'"></span>
+                      <span x-text="plural(r.site.circuits.length, 'circuit')"></span>
+                      <span x-text="plural(r.site.alarms.length, 'active alarm')"></span>
+                      <template x-if="siteHealth(r.site.id)">
+                        <span title="AIOps site health, last 3 h">Health <span :class="`v v-${siteHealth(r.site.id).st}`" x-text="siteHealth(r.site.id).cat"></span></span>
+                      </template>
+                    </div>
+                    <div class="no-problems" x-show="!r.problems.length">No problems detected</div>
+                    <ul class="problems" x-show="r.problems.length">
+                      <template x-for="p in r.problems.slice(0, PROBLEMS_SHOWN)">
+                        <li :class="`p-${p.sev}`"><span class="p-dot" aria-hidden="true"></span><span class="sr-only" x-text="`${p.sev}: `"></span><span x-text="p.text"></span></li>
+                      </template>
+                      <li class="more" x-show="r.problems.length > PROBLEMS_SHOWN" x-text="`+${r.problems.length - PROBLEMS_SHOWN} more`"></li>
+                    </ul>
+                    <div class="sc-open">Site details →</div>
+                  </a>
+                </template>
+              </div>
+
+              <table class="ov-table" x-show="ui.view === 'table' && matching.length">
+                <thead><tr><th>Status</th><th>Site</th><th>Live</th><th>Devices</th><th class="num">Circuits</th><th class="num">Alarms</th><th>Top problem</th></tr></thead>
+                <tbody>
+                  <template x-for="r in shown" :key="r.site.id">
+                    <tr :class="`s-${r.status}`" tabindex="0" :title="`Open ${r.site.name} site details`"
+                        @click="$event.target.closest('a') || go(siteHref(r.site))" @keydown.enter.prevent="go(siteHref(r.site))" @keydown.space.prevent="go(siteHref(r.site))">
+                      <td><span :class="`sc-status st ${r.status}`" x-text="STATUS_LABEL[r.status]"></span></td>
+                      <td><a :href="siteHref(r.site)" x-text="r.site.name"></a><div class="csub" x-text="[r.site.city, r.site.country].filter(Boolean).join(', ')"></div></td>
+                      <td><span :class="r.tag.kind === 'live' ? 'live-badge' : 'not-live'" :title="r.tag.title"><span class="live-dot" aria-hidden="true" x-show="r.tag.kind === 'live'"></span><span x-text="r.tag.text"></span></span></td>
+                      <td>
+                        <span x-show="r.site.devices.length" :class="`v v-${r.online === r.site.devices.length ? 'good' : 'critical'}`" x-text="`${r.online}/${r.site.devices.length}`"></span>
+                        <span x-show="!r.site.devices.length">—</span>
+                      </td>
+                      <td class="num" x-text="r.site.circuits.length"></td>
+                      <td class="num" x-text="r.site.alarms.length"></td>
+                      <td class="top-problem">
+                        <template x-if="r.problems.length">
+                          <span><span :class="`p-${r.problems[0].sev}`"><span class="p-dot" aria-hidden="true"></span><span x-text="r.problems[0].text"></span></span>
+                            <span class="muted" x-show="r.problems.length > 1" x-text="`+${r.problems.length - 1}`"></span></span>
+                        </template>
+                        <span class="muted" x-show="!r.problems.length">—</span>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+
+              <template x-if="ui.view === 'map'">
+                <section class="ov-map">
+                  <div class="map-head">
+                    <div class="map-summary">
+                      <template x-if="mapCounts">
+                        <span>
+                          <span x-text="`${plural(mapCounts.sites, 'site')} · ${plural(mapCounts.tunnels, 'VPN tunnel')}`"></span>
+                          <span class="v v-critical" x-show="mapCounts.down" x-text="`${mapCounts.down} down`"></span>
+                          <span class="v v-critical" x-show="mapCounts.poor" x-text="`${mapCounts.poor} poor`"></span>
+                          <span class="v v-warning" x-show="mapCounts.fair" x-text="`${mapCounts.fair} fair`"></span>
+                          <span class="muted small" x-show="topo.data" x-text="`· checked ${hm(Date.parse(topo.data?.generated_at))}`"></span>
+                        </span>
+                      </template>
+                      <span class="muted" x-show="!mapCounts && !topo.error">Loading the topology…</span>
+                      <span class="st warning" x-show="topo.error" :title="topo.error"><span class="ico" aria-hidden="true">▲</span><span x-text="mapCounts ? 'Couldn\'t refresh the topology' : `Couldn't load the topology: ${topo.error}`"></span></span>
+                    </div>
+                    <label class="check small" title="Tunnels an admin disabled, and on-demand tunnels not in use">
+                      <input type="checkbox" :checked="mapShowOff" @change="toggleMapOff()"> Show disabled and on-demand tunnels</label>
+                    <div class="ov-view" role="group" aria-label="Map layout" title="Ring: data centers in the middle. Top-down: data centers at the top, branches along the bottom.">
+                      <template x-for="(label, mode) in MAP_LAYOUTS" :key="mode">
+                        <button type="button" :class="mapLayoutMode === mode && 'active'" :aria-pressed="mapLayoutMode === mode" @click="setMapLayout(mode)" x-text="label"></button>
+                      </template>
+                    </div>
+                    <div class="map-zoom" role="group" aria-label="Zoom">
+                      <button type="button" class="btn btn-sm" @click="mapZoom(1.4)" title="Zoom in (or use the mouse wheel)">+</button>
+                      <button type="button" class="btn btn-sm" @click="mapZoom(1 / 1.4)" title="Zoom out">−</button>
+                      <button type="button" class="btn btn-sm" @click="mapFit()" title="Show the whole map">Fit</button>
+                    </div>
+                  </div>
+                  <div class="map-frame">
+                    <svg class="map-svg" x-effect="drawMap($el)" preserveAspectRatio="xMidYMid meet" role="group" aria-label="Topology map"></svg>
+                    <div class="map-tip" x-ref="mapTip" hidden></div>
+                  </div>
+                  <div class="map-legend">
+                    <span><svg viewBox="-8 -8 16 16" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" rx="2" class="lg-hub"/></svg>Data center</span>
+                    <span><svg viewBox="-8 -8 16 16" aria-hidden="true"><path d="M0 -7L7 0L0 7L-7 0Z" class="lg-gw"/></svg>Branch Gateway</span>
+                    <span><svg viewBox="-8 -8 16 16" aria-hidden="true"><circle r="5" class="lg-good"/></svg>Branch (colour: site status)</span>
+                    <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-up"/></svg>Tunnel up</span>
+                    <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-fair"/></svg>Health fair</span>
+                    <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-poor"/></svg>Health poor</span>
+                    <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-down"/></svg>Down</span>
+                    <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-off"/></svg>Disabled or on demand</span>
+                    <span class="muted">A line is every tunnel between two sites, coloured by the worst; thicker means more tunnels.</span>
+                  </div>
+                  <template x-if="mapProblems.length">
+                    <table class="ov-table map-problems">
+                      <thead><tr><th>State</th><th>Between</th><th>Tunnels</th></tr></thead>
+                      <tbody>
+                        <template x-for="e in (mapShowAll ? mapProblems : mapProblems.slice(0, MAP_PROBLEMS_SHOWN))" :key="e.key">
+                          <tr>
+                            <td><span :class="`v v-${e.state === 'fair' ? 'warning' : 'critical'}`"
+                                      x-text="e.state === 'down' ? `${e.down} of ${e.total} down` : `Health ${e.state}`"></span></td>
+                            <td><a :href="siteHref({ id: e.a })" x-text="e.aName"></a> ↔ <a :href="siteHref({ id: e.b })" x-text="e.bName"></a></td>
+                            <td class="small"><template x-for="t in e.bad" :key="t.id"><div x-text="`${t.text}: ${t.label}`"></div></template></td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </template>
+                  <button type="button" class="link-btn" x-show="mapProblems.length > MAP_PROBLEMS_SHOWN" @click="mapShowAll = !mapShowAll"
+                          x-text="mapShowAll ? 'Show fewer' : `Show all ${mapProblems.length} site pairs with a problem`"></button>
+                </section>
+              </template>
+
+              <div class="ov-more" x-show="ui.view !== 'map' && matching.length > shown.length">
+                <button type="button" class="btn" @click="ui.limit += PAGE" x-text="`Show more (${matching.length - shown.length} more sites)`"></button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- Site details ----------------------------------------------------------------------- -->
+      <template x-if="route.name === 'site'">
+        <div>
+          <div class="loading" x-show="siteLoading && !siteFor(route.siteId)"><span class="spinner"></span> Loading site details… (24 h of metrics for this site's circuits)</div>
+          <div class="notice error" x-show="siteError && !siteFor(route.siteId)"><strong>Could not load site details.</strong>
+            <span x-text="siteError"></span> <a href="#/">Back to the Overview</a></div>
+
+          <template x-if="siteFor(route.siteId)">
+            <div>
+              <div class="tiles">
+                <div class="tile">
+                  <div class="label">Devices online</div>
+                  <div class="value"><span x-text="siteTiles.devicesUp"></span><span class="of" x-text="` / ${siteTiles.devices}`"></span></div>
+                  <div class="sub">
+                    <template x-if="siteTiles.disconnected">
+                      <span class="st critical"><span class="ico" aria-hidden="true">✕</span><span x-text="`${siteTiles.disconnected} disconnected`"></span></span>
+                    </template>
+                    <template x-if="siteTiles.devices && !siteTiles.disconnected">
+                      <span class="st good"><span class="ico" aria-hidden="true">●</span>all connected</span>
+                    </template>
+                    <template x-if="!siteTiles.devices && site.devices_error">
+                      <span class="st warning"><span class="ico" aria-hidden="true">▲</span>failed to load</span>
+                    </template>
+                    <span x-show="!siteTiles.devices && !site.devices_error">no devices</span>
+                    <span x-show="devices.checkedAt" x-text="`· checked ${hms(devices.checkedAt)}`"
+                          :title="`Device status is checked every ${DEVICE_POLL_MS / 1000} s`"></span>
+                  </div>
+                </div>
+                <div class="tile" x-show="!siteCtx.hub">
+                  <div class="label">Circuits with issues now</div>
+                  <div class="value"><span x-text="siteTiles.issues"></span><span class="of" x-text="` / ${site.circuits.length}`"></span></div>
+                  <div class="sub">
+                    <template x-if="siteTiles.critical">
+                      <span class="st critical"><span class="ico" aria-hidden="true">✕</span><span x-text="`${siteTiles.critical} critical`"></span></span>
+                    </template>
+                    <span x-show="!siteTiles.critical">none critical</span>
+                  </div>
+                </div>
+                <div class="tile" x-show="!siteCtx.hub">
+                  <div class="label" x-text="`Data transferred (${siteCtx.hours} h)`"></div>
+                  <div class="value value-sm" x-text="`↓ ${siteTiles.volDown} · ↑ ${siteTiles.volUp}`"></div>
+                  <div class="sub" x-text="`rolling ${siteCtx.hours} h`"></div>
+                </div>
+              </div>
+
+              <div class="notice error" x-show="siteError"><strong>Could not reload site details.</strong> <span x-text="siteError"></span> Showing what was loaded before.</div>
+              <div class="notice catching-up" x-show="catchingUp"><span class="spinner" aria-hidden="true"></span>
+                <span x-text="`Showing saved data up to ${hm(Date.parse(site.saved_until))} · fetching the latest minutes…`"></span></div>
+              <div class="notice error" x-show="site.circuits_error"><strong>This site's circuits failed to load.</strong>
+                <button type="button" class="btn btn-sm" @click="loadSite(site.site.id, { force: true })">Try again</button>
+                <details><summary>Details</summary><pre x-text="site.circuits_error"></pre></details></div>
+              <div class="notice error" x-show="site.devices_error"><strong>ION devices failed to load.</strong>
+                Device status fills in at the next device check (every 20 s).
+                <details><summary>Details</summary><pre x-text="site.devices_error"></pre></details></div>
+              <div class="notice" x-show="siteMetricErrors.length"><strong x-text="`${siteMetricErrors.length} metric queries failed.`"></strong>
+                Affected values show “—” and are fetched again at the next update.
+                <details><summary>Details</summary><pre x-text="siteMetricErrors.slice(0, 200).join('\n')"></pre></details></div>
+
+              <section class="site">
+                <div class="site-head">
+                  <h2 x-text="site.site.name"></h2>
+                  <template x-if="siteTag">
+                    <span :class="siteTag.kind === 'live' ? 'live-badge' : 'not-live'" :title="siteTag.title">
+                      <span class="live-dot" aria-hidden="true" x-show="siteTag.kind === 'live'"></span><span x-text="siteTag.text"></span></span>
+                  </template>
+                  <span class="st critical live-failed" x-show="live.mode === 'error'" :title="`Live refresh failed: ${live.error}. Retrying in 30 s.`">
+                    <span class="ico" aria-hidden="true">✕</span>Live refresh failed</span>
+                  <span class="period-pick" x-show="!siteCtx.hub" role="group" aria-label="Period for circuit figures and Top applications">
+                    <template x-for="h in SITE_WINDOWS" :key="h">
+                      <button type="button" :class="['period-btn', h === siteWindow && 'active']" :aria-pressed="h === siteWindow"
+                              :title="`Circuit figures and Top applications over the last ${h} h`" @click="setWindow(h)" x-text="`${h} h`"></button>
+                    </template>
+                  </span>
+                  <a class="flows-link" :href="flowsLink()" target="_blank" rel="noopener" title="Search this site's flows in the last hour (Flow Search)">Flows ↗</a>
+                  <button type="button" class="btn btn-sm help-btn" @click="openHelp('site')" title="How circuit metrics and device health are gathered, and live updates">HELP</button>
+                  <span class="meta" x-text="[siteRole(site.site.role), [site.site.city, site.site.country].filter(Boolean).join(', '),
+                    site.site.admin_state && site.site.admin_state !== 'active' ? site.site.admin_state : ''].filter(Boolean).join(' · ')"></span>
+                </div>
+
+                <details class="key" x-show="!siteCtx.hub">
+                  <summary>Key</summary>
+                  <div class="key-notes">
+                    <p><strong>Utilization</strong>:
+                      <span class="key-meter"><span class="track"><span class="fill good key-fill"></span><span class="p95-tick key-p95"></span><span class="peak-tick key-peak"></span></span></span>
+                      bar = latest % of configured bandwidth, tall tick = period peak, short notch below = period p95.</p>
+                    <p><strong>Values</strong> show each circuit's newest complete minute, normally about a minute behind and updated live.
+                      A circuit that stops reporting keeps its last minute, faded, with “Not live”. Peak, p95, average and spikes cover the
+                      period (<span x-text="`${siteCtx.hours} h`"></span>); hover a cell for the details. p95 is a level (95% of minutes were at or below it), not a moment.</p>
+                    <p><strong>Colours</strong>: <span class="v v-good">green OK</span> · <span class="v v-warning">yellow warning</span> ·
+                      <span class="v v-critical">red critical</span>: latency ≥ <span x-text="THRESHOLDS.latency_ms.join(' / ')"></span> ms ·
+                      jitter ≥ <span x-text="THRESHOLDS.jitter_ms.join(' / ')"></span> ms · loss ≥ <span x-text="THRESHOLDS.loss_pct.join(' / ')"></span>% ·
+                      utilization ≥ <span x-text="THRESHOLDS.util_pct.join(' / ')"></span>%.</p>
+                    <p><strong>Spikes</strong> (the line under latency or loss): minutes at least double the circuit's own median over the period
+                      <em>and</em> at least 50 ms (latency) or 0.5 points (loss) above it; spike minutes under 3 minutes apart count as one.
+                      Yellow for any spike, red when its peak reached critical. Values are 1-minute averages, so a burst of a few seconds reads lower than it peaked.</p>
+                    <p><strong>Devices</strong>: CPU, memory and disk are 5-minute averages (memory and disk shown as used; the API reports
+                      what is free), yellow / red at CPU ≥ <span x-text="DEVICE_THRESHOLDS.cpu_pct.join(' / ')"></span>% and memory or disk
+                      ≥ <span x-text="DEVICE_THRESHOLDS.mem_used_pct.join(' / ')"></span>%. Hardware lists active power supply and other
+                      hardware alarms. Refreshed every 2 minutes; connected / disconnected every 20 s.</p>
+                    <p><strong>Live</strong> when any circuit has a minute from the last 3 minutes. While every ION at the site is offline,
+                      no metrics are fetched; updates resume when one reconnects.</p>
+                  </div>
+                </details>
+
+                <div class="part devices">
+                  <div class="muted small" x-show="!site.devices.length"
+                       x-text="site.devices_error ? 'ION devices failed to load.' : 'No ION devices at this site.'"></div>
+                  <div class="table-scroll" x-show="site.devices.length"><table class="part-table device-table">
+                    <thead><tr><th>Devices</th><th>Serial number</th><th>Model</th><th>Software</th>
+                      <th title="Branch HA: this ION's role in its pair (active or backup) and since when; hover for the priorities and whether it sees its peer">HA</th>
+                      <th class="num" title="CPU use, 5-minute average">CPU</th>
+                      <th class="num" title="Memory used (the API reports available memory; this is 100 minus that)">Memory</th>
+                      <th class="num" title="Disk used (the API reports available disk space; this is 100 minus that)">Disk</th>
+                      <th title="Temperatures the model reports (CPU on all; inlet and outlet on larger models)">Temperature</th>
+                      <th title="Active hardware alarms for this device (power supply etc.)">Hardware</th>
+                      <th title="Time since the last reboot; hover for when and why">Uptime</th></tr></thead>
+                    <tbody>
+                      <template x-for="d in deviceRows" :key="d.id">
+                        <tr :data-device="d.id">
+                          <td><span :class="['st', d.connected ? 'good' : 'critical']"><span class="ico" aria-hidden="true" x-text="d.connected ? '●' : '✕'"></span><strong x-text="d.name"></strong></span>
+                            <div class="csub" x-text="d.conn"></div></td>
+                          <td class="nowrap"><template x-if="d.serial"><span><code class="serial" x-text="d.serial"></code>
+                            <button type="button" class="copy-btn" title="Copy the serial number" aria-label="Copy the serial number" @click="copySerial(d.serial)">⧉</button></span></template>
+                            <span class="na" x-show="!d.serial">—</span></td>
+                          <td x-text="d.model || '—'"></td>
+                          <td class="nowrap" x-text="d.software || '—'"></td>
+                          <td :title="d.ha.tip">
+                            <span class="muted" x-show="d.ha.kind !== 'live'" x-text="d.ha.text"></span>
+                            <template x-if="d.ha.kind === 'live'"><span>
+                              <span x-show="d.ha.active" class="st good"><span class="ico" aria-hidden="true">●</span>Active</span>
+                              <span x-show="!d.ha.active" x-text="d.ha.text"></span>
+                              <span class="st warning" x-show="d.ha.noPeer"><span class="ico" aria-hidden="true">▲</span>no peer</span>
+                              <div class="csub" x-text="d.ha.sub"></div></span></template>
+                          </td>
+                          <template x-for="cell in [d.cpu, d.memory, d.disk]">
+                            <td class="num" :title="cell?.tip">
+                              <span x-show="cell" :class="['v', cell?.st && `v-${cell.st}`]"><span x-text="cell?.text"></span><span class="sr-only" x-text="statusText(cell?.st)"></span></span>
+                              <span class="na" x-show="!cell">—</span></td>
+                          </template>
+                          <td class="nowrap" x-text="d.temps || '—'" :class="!d.temps && 'na'"></td>
+                          <td>
+                            <template x-for="a in d.hardware"><div :class="['st', a.st]"><span class="ico" aria-hidden="true" x-text="STATUS_ICON[a.st]"></span><span x-text="a.text"></span></div></template>
+                            <span class="muted" x-show="d.hardwareNone" title="No active hardware alarms (power supply etc.) for this device">No alarms</span>
+                            <span class="na" x-show="!d.hardware.length && !d.hardwareNone">—</span></td>
+                          <td class="nowrap" :title="d.uptime?.tip">
+                            <span :class="d.uptime?.muted && 'muted'" x-show="d.uptime" x-text="d.uptime?.text"></span>
+                            <span class="na" x-show="!d.uptime">—</span></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table></div>
+                  <template x-for="n in healthNotes"><div class="muted small" x-text="n"></div></template>
+                </div>
+                <div class="table-scroll" x-show="site.circuits.length"><table class="circuits">
+                  <thead><tr>
+                    <th>Circuit</th>
+                    <th class="num" title="Round trip for the circuit; the API has no per-direction latency">Latency</th>
+                    <th class="num">Jitter ↓ / ↑</th>
+                    <th class="num">Loss ↓ / ↑</th>
+                    <th class="num" title="Configured circuit bandwidth (download / upload)">Capacity ↓ / ↑</th>
+                    <template x-for="dir in ['down', 'up']" :key="dir">
+                      <th :title="`Bar = latest utilization; short notch below = ${siteCtx.hours} h p95; tall tick = ${siteCtx.hours} h peak`">
+                        <span x-text="dir === 'down' ? '↓ Download' : '↑ Upload'"></span>
+                        <div class="util-legend"><span><i class="lg-fill"></i>latest</span><span><i class="lg-p95"></i><span x-text="`${siteCtx.hours} h p95`"></span></span><span><i class="lg-peak"></i><span x-text="`${siteCtx.hours} h peak`"></span></span></div>
+                      </th>
+                    </template>
+                  </tr></thead>
+                  <tbody>
+                    <template x-for="r in circuitRows" :key="r.id">
+                      <tr :data-circuit="r.id">
+                        <td class="circuit"><div class="cname" x-text="r.name"></div><div class="csub" x-text="r.sub"></div>
+                          <div class="stale-note" x-show="r.stale" x-text="r.stale"></div></td>
+                        <td class="num lat" :title="r.latency.tip">
+                          <template x-if="r.latency.value"><span :class="vcls(r.latency.value)"><span x-text="r.latency.value.text"></span><span class="sr-only" x-text="statusText(r.latency.value.st)"></span></span></template>
+                          <span class="na" x-show="!r.latency.value">—</span>
+                          <template x-for="sp in r.latency.spikes"><div class="spike"><span :class="['v', `v-${sp.st}`]" x-text="sp.text"></span> <span class="muted" x-text="sp.time"></span></div></template>
+                        </td>
+                        <template x-for="cell in [r.jitter, r.loss]">
+                          <td class="num pair" :title="cell.tip">
+                            <span class="na" x-show="cell.empty">—</span>
+                            <template x-if="!cell.empty">
+                              <span><template x-for="v in [cell.down, cell.up]"><span><span x-show="v" :class="vcls(v)"><span x-text="v?.text"></span><span class="sr-only" x-text="statusText(v?.st)"></span></span><span class="na" x-show="!v">—</span><span class="sep" x-show="v === cell.down">/</span></span></template>
+                                <span class="unit" x-text="cell.unit"></span></span>
+                            </template>
+                            <template x-for="sp in cell.spikes"><div class="spike"><span x-text="sp.prefix"></span><span :class="['v', `v-${sp.st}`]" x-text="sp.text"></span> <span class="muted" x-text="sp.time"></span></div></template>
+                          </td>
+                        </template>
+                        <td class="num cap-cell" :title="r.capacity?.tip || 'No bandwidth configured'">
+                          <template x-if="r.capacity"><span><span x-text="r.capacity.down"></span><span class="sep">/</span><span x-text="r.capacity.up"></span> <span class="unit">Mbps</span></span></template>
+                          <span class="na" x-show="!r.capacity">—</span>
+                        </td>
+                        <template x-for="u in [r.down, r.up]">
+                          <td class="util" :title="u.tip">
+                            <span class="na" x-show="u.empty">—</span>
+                            <template x-if="!u.empty">
+                              <div class="util-stack">
+                                <template x-if="u.bar">
+                                  <div :class="['track', !u.live && 'stale']" role="meter" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="u.bar.pct" aria-label="Utilization">
+                                    <div :class="['fill', u.bar.st]" :style="{ width: `${u.bar.width}%` }"></div>
+                                    <div class="peak-tick" x-show="u.bar.peak != null" :style="{ left: `${u.bar.peak}%` }"></div>
+                                    <div class="p95-tick" x-show="u.bar.p95 != null" :style="{ left: `${u.bar.p95}%` }"></div>
+                                  </div>
+                                </template>
+                                <div class="util-vals">
+                                  <span class="util-pct" :title="u.latest.tip"><span :class="vcls(u.latest)" x-text="u.latest.text"></span></span>
+                                  <span class="uh" :title="u.p95?.tip"><span class="sr-only" x-text="`${siteCtx.hours} h p95 `"></span><span :class="['v', u.p95?.st && `v-${u.p95.st}`]" x-text="u.p95?.text"></span></span>
+                                  <span class="uh" :title="u.peak?.tip"><span class="sr-only" x-text="`${siteCtx.hours} h peak `"></span><span :class="['v', u.peak?.st && `v-${u.peak.st}`]" x-text="u.peak?.text" x-show="!u.peak?.time"></span><template x-if="u.peak?.time"><a
+                                    :class="['v', 'peak-link', u.peak.st && `v-${u.peak.st}`]" :href="peakFlowsLink(u.peak.time)" target="_blank" rel="noopener"
+                                    :title="`${u.peak.tip}\nClick: the site's flows 5 minutes either side (Flow Search, new tab)`" x-text="u.peak.text"></a></template></span>
+                                </div>
+                              </div>
+                            </template>
+                          </td>
+                        </template>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table></div>
+                <div class="no-circuits" x-show="!site.circuits.length && !site.circuits_error && !siteCtx.hub">No WAN circuits configured.</div>
+                <div class="no-circuits" x-show="siteCtx.hub">Data center: there is no circuit data or Top applications here, so none is
+                  fetched. Open a branch to see its circuits and applications.</div>
+                <!-- LQM and Probes -->
+                <div class="part probes">
+                  <div class="part-head">
+                    <button type="button" class="link-btn part-toggle" :aria-expanded="!collapsed.probes" @click="toggleSection('probes')"
+                            :title="`${collapsed.probes ? 'Show' : 'Hide'} the LQM (tunnel latency) and probe results`"><span aria-hidden="true" x-text="collapsed.probes ? '▸' : '▾'"></span> LQM and Probes</button>
+                    <span class="muted" x-text="`· last ${siteCtx.hours} h${probesView ? ` · ${probesView.count}` : ''}`"></span>
+                    <button type="button" class="btn btn-sm help-btn" @click="openHelp('probes')" title="How the LQM and probe results are gathered">HELP</button>
+                  </div>
+                  <template x-if="!collapsed.probes">
+                    <div>
+                      <div class="muted small" x-show="!probesView && !probesError">Loading the tunnels' LQM and the probe results… (two queries per tunnel and one per probe and path, up to a minute)</div>
+                      <div class="muted small" x-show="!probesView && probesError" x-text="`Couldn't load the LQM and probe results: ${probesError}`"></div>
+                      <div class="small st warning" x-show="probesView?.error"><span class="ico" aria-hidden="true">▲</span><span x-text="probesView?.error"></span></div>
+                      <div class="muted small" x-show="probesView?.hub">Data center: it runs no probes and reports no link quality (LQM), so nothing is asked for. Open a branch to see its tunnels to this data center and its probes.</div>
+                      <div class="muted small" x-show="probesView && !probesView.hub && !probesView.tunnels.length && !probesView.error">No tunnels up on this site's circuits.</div>
+                      <div class="table-scroll" x-show="probesView?.tunnels.length"><table class="part-table probe-table tunnel-table">
+                        <thead><tr><th>Circuit</th><th title="The data center ION at the far end (its circuit); only the active tunnel of each fabric link">Tunnel to</th>
+                          <th class="num" :title="`Tunnel latency (LQM, round trip, branch ION to data center ION), average over the last ${siteCtx.hours} h of 1-minute values; hover a value for the latest and p95`">Avg</th>
+                          <th class="num" :title="`Tunnel latency: the worst minute of the last ${siteCtx.hours} h; hover a value for when`">Max</th>
+                          <th class="num" title="Average jitter over the period, ms: into the branch / out of it">Jitter in / out</th>
+                          <th class="num" title="Average packet loss over the period, %: into the branch / out of it">Loss in / out</th>
+                          <th class="num" title="Average MOS (voice quality, 1 to 5) over the period: into the branch / out of it">MOS in / out</th>
+                          <th title="The probes that run over this tunnel and their average: red over the Move Flows SLA, yellow when slow beyond the data center">VPN probes</th></tr></thead>
+                        <tbody>
+                          <template x-for="t in probesView?.tunnels || []" :key="t.id">
+                            <tr :data-tunnel="t.id">
+                              <td x-text="t.circuit"></td>
+                              <td x-text="t.name"></td>
+                              <td colspan="5" class="muted" x-show="t.none">No LQM in the last 24 hours</td>
+                              <template x-for="c in t.none ? [] : [t.avg, t.max]">
+                                <td class="num" :title="c.tip || null"><span :class="t.faded && 'faded'" x-text="c.text"></span></td>
+                              </template>
+                              <template x-for="c in t.none ? [] : [t.jitter, t.loss, t.mos]">
+                                <td class="num" x-text="c"></td>
+                              </template>
+                              <td>
+                                <span class="muted" x-show="!t.probes.length" :title="t.noProbe">—</span>
+                                <template x-for="(pr, i) in t.probes" :key="pr.name">
+                                  <span :title="pr.tip"><span x-show="i" aria-hidden="true">, </span><span :class="pr.st && `v v-${pr.st}`" x-text="pr.text"></span></span>
+                                </template>
+                              </td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table></div>
+                      <div class="muted small" x-show="probesView?.empty">No probe profile on this site's circuits (circuit or circuit category).</div>
+                      <div class="table-scroll" x-show="probesView && !probesView.empty"><table class="part-table probe-table">
+                        <thead><tr><th>Circuit</th><th>Path</th><th class="num" :title="`Probe response time, average over the last ${siteCtx.hours} h; hover a value for the latest and p95`">Avg</th><th class="num" :title="`The slowest probe test of the last ${siteCtx.hours} h; hover a value for when`">Max</th>
+                          <th class="num" title="Average probe jitter over the period">Jitter</th>
+                          <th class="num" title="VPN paths: the tunnel's own latency (LQM, branch ION to data center ION), average over the period">Tunnel</th>
+                          <th class="num" title="VPN paths: delay added past the data center ION: the probe's average per round trip minus the tunnel's latency. Link health and tunnel LQM can't see this part">Beyond DC</th>
+                          <th class="bar" title="Each path's Avg as a bar, against the slowest path of this probe (full width)">Avg vs slowest</th></tr></thead>
+                        <template x-for="p in probesView?.probes || []" :key="p.id">
+                          <tbody>
+                            <tr class="probe-head" :data-probe="p.id"><td colspan="8">
+                              <button type="button" class="link-btn hist-toggle" :aria-expanded="p.open" @click="toggleProbe(p.id)"
+                                      :title="`${p.open ? 'Hide' : 'Show'} each path`" x-text="p.open ? '▾' : '▸'"></button>
+                              <strong x-text="p.name"></strong> <span class="muted" x-text="`· ${p.sub}`"></span>
+                              <span class="muted" x-show="p.sla" x-text="`· ${p.sla}`"></span>
+                              <span class="muted" x-show="!p.open && p.summary.text" x-text="`· ${p.summary.text}`"></span>
+                              <template x-if="!p.open && p.summary.upstream"><span> · <span class="v v-warning" x-text="p.summary.upstream"></span></span></template>
+                            </td></tr>
+                            <template x-for="x in p.open ? p.rows : []" :key="x.key">
+                              <tr>
+                                <td x-text="x.circuit"></td>
+                                <td x-text="x.path"></td>
+                                <td colspan="6" x-show="x.error"><span class="st warning" :title="x.error"><span class="ico" aria-hidden="true">▲</span>Probe query failed</span></td>
+                                <td colspan="6" class="muted" x-show="x.none">No results in this period</td>
+                                <template x-for="c in x.error || x.none ? [] : [x.avg, x.max, x.jitter]">
+                                  <td class="num" :title="c.tip || null"><span :class="c.st && `v v-${c.st}`" x-text="c.text"></span><span class="sr-only" x-show="c.st" x-text="' (over the SLA)'"></span></td>
+                                </template>
+                                <template x-if="!x.error && !x.none">
+                                  <td class="num" :title="x.tunnel.tip || null"><span :class="[x.tunnel.muted && 'muted', x.tunnel.faded && 'faded']" x-text="x.tunnel.text"></span></td>
+                                </template>
+                                <template x-if="!x.error && !x.none">
+                                  <td class="num" :title="x.beyond.tip || null"><span :class="[x.beyond.muted && 'muted', x.beyond.st && `v v-${x.beyond.st}`]" x-text="x.beyond.text"></span></td>
+                                </template>
+                                <template x-if="!x.error && !x.none">
+                                  <td class="bar" :title="x.barTip"><span class="app-bar"><span :style="{ width: `${x.bar}%` }"></span></span></td>
+                                </template>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </template>
+                      </table></div>
+                    </div>
+                  </template>
+                </div>
+                <!-- Top applications -->
+                <div class="part apps" x-show="!appsHub">
+                  <div class="part-head apps-head">
+                    <span class="apps-title">Top applications</span>
+                    <input type="search" class="apps-filter" placeholder="Filter apps…" aria-label="Filter applications"
+                           x-model="appsUi.filter" x-show="appsHead.count">
+                    <span class="muted" x-text="`· every app at this site, last ${appsHead.hours} h${appsHead.count ? ` · ${appsHead.count} apps` : ''}`"></span>
+                    <template x-if="appsHead.age"><span class="muted apps-age" :title="appsHead.age.tip">
+                      <span x-text="`· ${appsHead.age.text}`"></span><span x-show="appsHead.age.next" x-text="` · ${appsHead.age.next}`"></span></span></template>
+                    <template x-if="appsHead.buttons.length"><span class="muted apps-tools">·
+                      <template x-for="b in appsHead.buttons" :key="b.kind">
+                        <button type="button" :class="b.prominent ? 'btn btn-sm btn-prominent' : 'link-btn apps-refresh'" :data-apps="b.kind"
+                                :disabled="b.disabled" :title="b.tip" @click="appsAction(b.kind)" x-text="b.label"></button>
+                      </template></span></template>
+                    <button type="button" class="btn btn-sm help-btn" @click="openHelp('apps')" title="How Top applications is gathered, and what each column means">HELP</button>
+                  </div>
+                  <template x-for="n in appsHead.notes"><div :class="['small', n.st ? `st ${n.st}` : 'muted']" :title="n.tip" x-text="n.text"></div></template>
+                  <template x-for="pb in appsHead.progress || []">
+                    <div class="apps-progress" role="progressbar" :aria-label="pb.label" :aria-valuemax="pb.total" :aria-valuenow="pb.done">
+                      <span :class="['bar', pb.indeterminate && 'indeterminate']"><span :style="pb.indeterminate ? {} : { width: `${pb.pct}%` }"></span></span>
+                      <span class="small muted" x-text="pb.label"></span></div>
+                  </template>
+                  <div class="muted small" x-show="appsHead.state === 'loading'">Loading…</div>
+                  <div class="small st critical" x-show="appsHead.state === 'error'" :title="appsSnap?.error"><span class="ico" aria-hidden="true">✕</span>Could not load applications</div>
+                  <div class="muted small" x-show="appsHead.state === 'empty'" x-text="`No application traffic in the last ${appsHead.hours} h.`"></div>
+                  <template x-if="appsHead.state === 'table'">
+                    <div>
+                      <div class="table-scroll"><table class="part-table apps-table">
+                        <thead><tr>
+                          <th class="rank"></th>
+                          <th :aria-sort="ariaSort('name')"><button type="button" class="th-sort" title="Sort by Application" @click="sortBy('name')" x-text="'Application' + sortMark('name')"></button></th>
+                          <th class="bar"></th>
+                          <template x-for="c in appsView.cols.slice(1)" :key="c.key">
+                            <th class="num" :aria-sort="ariaSort(c.key)">
+                              <button type="button" class="th-sort" :title="c.title || `Sort by ${c.label}`" @click="sortBy(c.key)" x-text="c.label + sortMark(c.key)"></button></th>
+                          </template>
+                          <th></th>
+                        </tr></thead>
+                        <tbody>
+                          <template x-for="r in appsView.rows" :key="r.id">
+                            <tr :data-app="r.id">
+                              <td class="rank" x-text="r.rank"></td>
+                              <td class="name"><a class="app-flows" target="_blank" rel="noopener" :href="flowsLink({ app: r.id, last: siteWindow * 60 })" x-text="r.name"
+                                                  :title="`${r.name}: search this app's flows at this site over the last ${siteWindow} h (Flow Search)`"></a></td>
+                              <td class="bar"><span class="app-bar"><span :style="{ width: `${r.bar}%` }"></span></span></td>
+                              <template x-for="c in appsView.cols.slice(1)" :key="c.key">
+                                <td class="num" :title="r.cells[c.key].tip || null">
+                                  <span :class="cellCls(r.cells[c.key])"><span x-text="r.cells[c.key].text"></span><span class="sr-only" x-show="r.cells[c.key].sr" x-text="r.cells[c.key].sr"></span></span>
+                                  <template x-if="r.cells[c.key].trend"><span :class="['rtt-trend', r.cells[c.key].trend.st ? `st ${r.cells[c.key].trend.st}` : 'muted']" :title="r.cells[c.key].trend.tip">
+                                    <span aria-hidden="true" x-text="r.cells[c.key].trend.icon"></span><span class="sr-only" x-text="r.cells[c.key].trend.sr"></span></span></template>
+                                </td>
+                              </template>
+                              <td class="act"><button type="button" class="link-btn app-detail-btn" @click="openAppDetail(r.id)"
+                                                      :title="`Response times, failed-txn rate, app unreachable and destination prefixes for ${r.name} (fetched now)`">Details</button></td>
+                            </tr>
+                          </template>
+                          <tr x-show="appsView.empty"><td :colspan="appsView.cols.length + 3" class="muted" x-text="appsView.empty"></td></tr>
+                        </tbody>
+                      </table></div>
+                      <button type="button" class="link-btn part-more" x-show="appsView.more" @click="appsUi.showAll = !appsUi.showAll" x-text="appsView.more"></button>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Active alarms -->
+                <div class="part alarms">
+                  <div class="part-head">
+                    <button type="button" class="link-btn part-toggle" :aria-expanded="!collapsed.activeAlarms" @click="toggleSection('activeAlarms')"
+                            :title="`${collapsed.activeAlarms ? 'Show' : 'Hide'} the active alarms`"><span aria-hidden="true" x-text="collapsed.activeAlarms ? '▸' : '▾'"></span> Active alarms</button>
+                    <span class="muted">·</span>
+                    <span x-show="!alarmsData && !siteAlarms.error" class="muted">loading…</span>
+                    <template x-if="alarmsData"><span>
+                      <span x-text="hideAcked && activeView.acked ? activeView.shown : activeView.total"></span>
+                      <span class="muted" x-show="hideAcked && activeView.acked" x-text="`(${activeView.acked} acknowledged hidden)`"></span></span></template>
+                    <label class="check hide-acked" x-show="!collapsed.activeAlarms && alarmsData"><input type="checkbox" :checked="hideAcked" @change="setHideAcked($event.target.checked)"> Hide acknowledged</label>
+                    <button type="button" class="btn btn-sm help-btn" @click="openHelp('alarms')" title="How active and cleared alarms are gathered">HELP</button>
+                  </div>
+                  <template x-if="!collapsed.activeAlarms">
+                    <div>
+                      <div class="muted small" x-show="siteAlarms.error && !alarmsData" x-text="`Couldn't load the alarms: ${siteAlarms.error}`"></div>
+                      <div class="muted small" x-show="alarmsData?.active_error" x-text="`Active alarms failed to load: ${alarmsData?.active_error}`"></div>
+                      <div class="muted small" x-show="alarmsData && !alarmsData.active_error && !activeView.rows.length"
+                           x-text="activeView.total ? 'No unacknowledged alarms.' : 'No active alarms.'"></div>
+                      <div class="table-scroll" x-show="activeView.rows.length"><table class="part-table alarm-table">
+                        <thead><tr><th>Alarm</th><th>Severity</th><th>Device</th><th>Affected</th><th>Since</th><th>Acknowledged</th></tr></thead>
+                        <tbody>
+                          <template x-for="a in activeView.rows" :key="a.key">
+                            <tr :class="[`p-${a.sev}`, a.cause && 'alarm-cause']" :title="a.cause ? 'Suppressed by the controller under the site alarm above (shown under it, as in SCM)' : null">
+                              <td><span class="cause-arrow" aria-hidden="true" x-show="a.cause">↳</span><span class="sr-only" x-show="a.cause">cause: </span><span class="p-dot" aria-hidden="true"></span><span class="sr-only" x-text="`${a.sev}: `"></span><span x-text="a.label"></span>
+                                <div :class="['csub', !a.generated && 'mono']" x-text="a.code"></div></td>
+                              <td><span x-text="a.severity"></span> <span class="muted" x-show="a.priority" x-text="`· ${a.priority}`"></span></td>
+                              <td x-text="a.device"></td>
+                              <td><span x-text="a.entity"></span><div class="csub" x-show="a.info" x-text="a.info"></div></td>
+                              <td class="nowrap" :title="a.sinceTip || a.time"><span x-text="a.since"></span> <span class="muted" x-show="a.age" x-text="`· ${a.age}`"></span></td>
+                              <template x-if="!a.generated"><td><span x-show="a.acknowledged">Yes</span><span class="muted" x-show="!a.acknowledged">No</span></td></template>
+                              <template x-if="a.generated"><td>
+                                <button type="button" class="link-btn ack-btn" x-show="!a.acknowledged" :title="a.ackTip" @click="ackAlarm(a.ackKey)">Acknowledge</button>
+                                <span x-show="a.acknowledged">Yes <button type="button" class="link-btn ack-btn" :title="a.ackTip" @click="unackAlarm(a.ackKey)">Undo</button></span></td></template>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table></div>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Cleared alarms -->
+                <div class="part alarms">
+                  <div class="part-head">
+                    <button type="button" class="link-btn part-toggle" :aria-expanded="!collapsed.cleared" @click="toggleSection('cleared')"
+                            :title="`${collapsed.cleared ? 'Show' : 'Hide'} the cleared alarms`"><span aria-hidden="true" x-text="collapsed.cleared ? '▸' : '▾'"></span> Cleared alarms</button>
+                    <span class="muted" x-text="`· last 24 h${alarmsData?.cleared ? ` · ${clearedCount}` : ''}`"></span>
+                    <button type="button" class="btn btn-sm help-btn" @click="openHelp('alarms')" title="How active and cleared alarms are gathered">HELP</button>
+                  </div>
+                  <template x-if="!collapsed.cleared">
+                    <div>
+                      <div class="muted small" x-show="!alarmsData && !siteAlarms.error">Loading the alarm history…</div>
+                      <div class="muted small" x-show="siteAlarms.error && !alarmsData?.cleared" x-text="`Couldn't load the alarm history: ${siteAlarms.error}`"></div>
+                      <div class="muted small" x-show="alarmsData?.cleared_error" x-text="`Couldn't load the alarm history: ${alarmsData?.cleared_error}`"></div>
+                      <div class="muted small" x-show="alarmsData?.cleared && !clearedView.groups">No alarms cleared in the last 24 h.</div>
+                      <div class="muted small" x-show="clearedView.truncated" x-text="`More alarms than one load holds; showing the latest ${clearedView.count}.`"></div>
+                      <div class="table-scroll" x-show="clearedView.rows.length"><table class="part-table alarm-table">
+                        <thead><tr><th>Alarm</th><th>Severity</th><th>Device</th><th>Affected</th>
+                          <th class="num" title="Times it was raised and cleared in the last 24 h, and the total time active">Times · active</th><th>Last cleared</th></tr></thead>
+                        <template x-for="r in clearedView.rows" :key="r.key">
+                          <tbody>
+                            <tr :class="`p-${r.sev}`" :data-history="r.key">
+                              <td><button type="button" class="link-btn hist-toggle" :aria-expanded="r.open" @click="toggleHistory(r.key)"
+                                          :title="`${r.open ? 'Hide' : 'Show'} each time it was raised and cleared`" x-text="r.open ? '▾' : '▸'"></button>
+                                <span class="p-dot" aria-hidden="true"></span><span class="sr-only" x-text="`${r.sev}: `"></span><span x-text="r.label"></span>
+                                <div class="csub mono" x-text="r.code"></div></td>
+                              <td><span x-text="r.severity"></span> <span class="muted" x-show="r.priority" x-text="`· ${r.priority}`"></span></td>
+                              <td x-text="r.device"></td>
+                              <td x-text="r.entity"></td>
+                              <td class="num nowrap" :title="r.timesTip" x-text="r.times"></td>
+                              <td class="nowrap" :title="r.last?.iso"><span x-text="r.last?.text || '—'"></span> <span class="muted" x-show="r.last" x-text="`· ${r.last?.age}`"></span></td>
+                            </tr>
+                            <template x-for="(o, i) in r.occurrences" :key="i">
+                              <tr class="alarm-cause occurrence">
+                                <td colspan="4"><span class="cause-arrow" aria-hidden="true">↳</span><span x-text="o.raised"></span> → <span :title="o.until.tip" x-text="o.until.text"></span>
+                                  <span class="muted" x-show="o.notes" x-text="`· ${o.notes}`"></span></td>
+                                <td class="num nowrap" x-text="o.duration"></td><td></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </template>
+                      </table></div>
+                      <button type="button" class="link-btn part-more" x-show="clearedView.more" @click="historyAll = !historyAll" x-text="clearedView.more"></button>
+                    </div>
+                  </template>
+                </div>
+              </section>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+  </main>
+
+  <!-- Tenants dialog ------------------------------------------------------------------------- -->
+  <dialog id="tenant-dialog" x-ref="tenantDialog" aria-labelledby="tenants-title">
+    <div class="dialog-head">
+      <h2 id="tenants-title">Tenants</h2>
+      <button class="icon-btn" aria-label="Close" @click="$refs.tenantDialog.close()">✕</button>
+    </div>
+    <table class="tenant-table">
+      <thead><tr><th>Name</th><th>TSG ID</th><th>Client ID</th><th></th></tr></thead>
+      <tbody>
+        <tr x-show="!tenants.length"><td colspan="4" class="muted">No tenants saved.</td></tr>
+        <template x-for="t in tenants" :key="t.tsg_id">
+          <tr>
+            <td x-text="t.name"></td>
+            <td><code x-text="t.tsg_id"></code></td>
+            <td><code x-text="t.client_id_masked"></code></td>
+            <td>
+              <span :class="`small test-result ${testResults[t.tsg_id]?.cls || ''}`" :title="testResults[t.tsg_id]?.title"
+                    x-text="testResults[t.tsg_id]?.text"></span>
+              <button class="btn" :disabled="!!testResults[t.tsg_id]?.busy" @click="testTenant(t)">Test</button>
+              <button class="btn" @click="editTenant(t)">Edit</button>
+              <button class="btn danger" @click="deleteTenant(t)">Delete</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+
+    <form id="tenant-form" @submit.prevent="saveTenant()" autocomplete="off">
+      <h3 x-text="form.editing ? `Edit ${form.name}` : 'Add tenant'"></h3>
+      <div class="grid2">
+        <label>TSG ID<input name="tsg_id" required pattern="\d{5,20}" inputmode="numeric" placeholder="1234567890"
+                            x-model="form.tsg_id" :readonly="form.editing"></label>
+        <label>TSG name<input name="name" required placeholder="Acme Corp" x-model="form.name"></label>
+        <label>Client ID<input name="client_id" required placeholder="svc-acct@1234567890.iam.panserviceaccount.com"
+                               x-model="form.client_id" x-ref="clientId"></label>
+        <label>Client secret<input name="client_secret" type="password" :required="!form.editing"
+                                   :placeholder="form.editing ? 'Leave blank to keep current secret' : ''" x-model="form.client_secret"></label>
+        <label class="check-row"><span><input type="checkbox" name="exclude_dc" x-model="form.exclude_dc"> Skip data center sites</span></label>
+      </div>
+      <p class="muted small">Stored locally in <code>data/tenants.json</code>; the secret is kept in the macOS Keychain (Linux: Secret Service)
+        or encrypted with Windows DPAPI for your user account.</p>
+      <div class="form-actions">
+        <span id="form-msg" :class="`small ${form.msgKind}`" x-text="form.msg"></span>
+        <button type="button" class="btn" x-show="form.editing" @click="resetForm()">Cancel edit</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Where an app fails (Overview > Applications) ------------------------------------------------ -->
+  <dialog class="app-detail-dialog app-sites-dialog" x-ref="appSitesDialog" aria-labelledby="app-sites-title" @close="closeAppSites()">
+    <div class="dialog-head">
+      <h2 id="app-sites-title" x-text="`${appSites.name} · where it fails · last 24 h`"></h2>
+      <button type="button" class="btn btn-sm help-btn" @click="openHelp('tenant')" title="Where these numbers come from">HELP</button>
+      <button class="icon-btn" aria-label="Close" @click="$refs.appSitesDialog.close()">✕</button>
+    </div>
+    <div class="loading" x-show="appSitesView.state === 'loading'"><span class="spinner"></span> <span x-text="appSitesView.loadingText"></span></div>
+    <div class="notice error" x-show="appSitesView.state === 'error'" x-text="`Could not load the sites: ${appSitesView.error}`"></div>
+    <template x-if="appSitesView.state === 'table'">
+      <div>
+        <p class="small"><span x-text="appSitesView.summary"></span>
+          <span class="muted" x-show="appSitesView.age" :title="appSitesView.age?.tip" x-text="`· ${appSitesView.age?.text}`"></span></p>
+        <div class="small st warning" x-show="appSitesView.error" :title="appSitesView.error"><span class="ico" aria-hidden="true">▲</span>Refresh failed — showing the last result</div>
+        <div class="prefix-tools">
+          <input type="search" placeholder="Filter sites…" aria-label="Filter sites" x-model="appSites.query">
+        </div>
+        <div class="table-scroll"><table class="part-table apps-table app-sites-table">
+          <thead><tr>
+            <th :aria-sort="appSitesAria('name')"><button type="button" class="th-sort" title="Sort by Site" @click="appSitesSortBy('name')" x-text="'Site' + appSitesMark('name')"></button></th>
+            <template x-for="c in appSitesView.cols" :key="c.key">
+              <th class="num" :aria-sort="appSitesAria(c.key)">
+                <button type="button" class="th-sort" :title="(c.title || `Sort by ${c.label}`).replace('the selected period', 'the last 24 h')" @click="appSitesSortBy(c.key)" x-text="c.label + appSitesMark(c.key)"></button></th>
+            </template>
+            <th class="th-plain"></th>
+          </tr></thead>
+          <tbody>
+            <template x-for="r in appSitesView.rows" :key="r.id">
+              <tr>
+                <td class="name" :title="r.name" x-text="r.name"></td>
+                <template x-for="c in appSitesView.cols" :key="c.key">
+                  <td class="num" :title="r.cells[c.key].tip || null">
+                    <span :class="cellCls(r.cells[c.key])"><span x-text="r.cells[c.key].text"></span><span class="sr-only" x-show="r.cells[c.key].sr" x-text="r.cells[c.key].sr"></span></span></td>
+                </template>
+                <td class="act">
+                  <button type="button" class="link-btn" @click="openAppDetail(appSites.appId, r.id, 24, appSites.name, r.site)"
+                          :title="`${appSites.name} at ${r.name}: response times, failed transactions and destination prefixes (last 24 h)`">Destinations</button>
+                  <a class="flows-link" target="_blank" rel="noopener" x-show="r.anyFailed"
+                     :href="flowsLink({ site: r.id, app: appSites.appId, filter: 'init_failed', last: 1440 })"
+                     :title="`${appSites.name}'s failed connections at ${r.name}, last 24 h (Flow Search: Init OK = No; the Source IP column shows the clients)`">Failed flows ↗</a>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="appSitesView.empty"><td :colspan="appSitesView.cols.length + 2" class="muted" x-text="appSitesView.empty"></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </template>
+  </dialog>
+
+  <!-- App details dialog ------------------------------------------------------------------------ -->
+  <dialog id="app-dialog" class="app-detail-dialog" x-ref="appDialog" aria-labelledby="app-dialog-title">
+    <div class="dialog-head">
+      <h2 id="app-dialog-title" x-text="appDetail.appId ? detailTitle : 'App details'"></h2>
+      <span class="period-pick" role="group" aria-label="Period for this app's details" x-show="!appDetail.row">
+        <template x-for="h in SITE_WINDOWS" :key="h">
+          <button type="button" :class="['period-btn', h === appDetail.hours && 'active']" :aria-pressed="h === appDetail.hours"
+                  :title="`This app's details over the last ${h} h`" @click="setDetailWindow(h)" x-text="`${h} h`"></button>
+        </template>
+      </span>
+      <button class="icon-btn" aria-label="Close" @click="$refs.appDialog.close()">✕</button>
+    </div>
+    <p class="detail-flows" x-show="appDetail.appId"><a class="flows-link" target="_blank" rel="noopener" :href="flowsLink({ site: appDetail.siteId, app: appDetail.appId, last: appDetail.hours * 60 })"
+      :title="`Every flow of this app at this site over the last ${appDetail.hours} h (Flow Search)`">Search this app's flows ↗</a></p>
+    <div class="loading" x-show="appDetail.loading"><span class="spinner"></span> Fetching response times, transactions and destination prefixes… (two queries, usually 5–15 s)</div>
+    <div class="notice error" x-show="appDetail.error && !appDetail.loading" x-text="`Could not load details: ${appDetail.error}`"></div>
+    <template x-if="detailView && !appDetail.loading">
+      <div class="app-detail-summary">
+        <div class="tiles detail-tiles">
+          <template x-for="t in detailView.tiles" :key="t.label">
+            <div class="tile"><div class="label" x-text="t.label"></div>
+              <div class="value" :title="t.value.tip || null"><span :class="cellCls(t.value)" x-text="t.value.text"></span><span class="sr-only" x-show="t.value.sr" x-text="t.value.sr"></span></div>
+              <div class="sub" x-text="t.sub"></div></div>
+          </template>
+        </div>
+        <template x-if="detailView.txn">
+          <div>
+            <h3 class="detail-h">Failed transactions</h3>
+            <p class="muted small" x-show="detailView.txn.none">No transactions reported.</p>
+            <template x-if="detailView.txn.rows">
+              <div>
+                <table class="perf-table"><thead><tr><th></th><th class="num">failed</th><th class="num">of transactions</th><th class="num">rate</th></tr></thead>
+                  <tbody><template x-for="r in detailView.txn.rows" :key="r.label">
+                    <tr><th x-text="r.label"></th><td class="num" x-text="r.failed"></td><td class="num muted" x-text="r.total"></td><td :class="['num', r.pctMuted && 'muted']" :title="r.pctTip || null" x-text="r.pct"></td></tr>
+                  </template></tbody></table>
+                <p class="small"><span x-show="detailView.txn.flag" :class="['v', `v-${detailView.txn.flag?.st}`]" x-text="detailView.txn.flag?.text"></span>
+                  <span class="muted" x-show="!detailView.txn.flag" x-text="detailView.txn.note"></span></p>
+              </div>
+            </template>
+          </div>
+        </template>
+        <h3 class="detail-h">Response times <span class="muted small" x-text="`${appDetail.hours} h of 1-minute values`"></span></h3>
+        <table class="perf-table"><thead><tr><th></th><th class="num">p95</th><th class="num">avg</th><th class="num">peak</th><th class="num">data</th></tr></thead>
+          <tbody><template x-for="r in detailView.perf" :key="r.label">
+            <tr><th x-text="r.label"></th>
+              <td colspan="4" class="st warning" x-show="r.error" :title="r.error">▲ query failed</td>
+              <td colspan="4" class="muted" x-show="r.none">Not reported by this application</td>
+              <template x-if="r.p95"><td class="num"><span :class="cellCls(r.p95)" x-text="r.p95.text"></span><span class="sr-only" x-text="r.p95.sr"></span></td></template>
+              <template x-if="r.p95"><td class="num" x-text="r.avg"></td></template>
+              <template x-if="r.p95"><td class="num"><span x-text="r.peak"></span> <span class="muted" x-text="r.peakTime"></span></td></template>
+              <template x-if="r.p95"><td class="num muted" x-text="r.minutes"></td></template>
+            </tr>
+          </template></tbody></table>
+        <h3 class="detail-h">Destination prefixes</h3>
+        <p class="muted small" x-show="!detailView.prefixEvents" x-text="`No per-prefix events recorded for this app in the last ${appDetail.hours} h: none happened, or prefix tracking is disabled at this site.`"></p>
+        <template x-if="detailView.prefixEvents">
+          <div>
+            <div class="prefix-tools">
+              <input type="search" placeholder="Filter prefixes…" aria-label="Filter prefixes" x-model="appDetail.prefixQuery">
+              <span class="muted small" x-text="detailPrefixes.count"></span>
+            </div>
+            <table class="prefix-table" x-show="detailPrefixes.rows.length">
+              <thead><tr><th>Destination prefix</th><th class="num" title="TCP 3-way handshake didn't complete">Failed connections</th>
+                <th class="num" title="No TCP ACK for 60 consecutive seconds, in connection setup or data transfer">App unreachable</th>
+                <th class="num" title="Every app fails some transactions normally, at its own rate">Failed transactions</th></tr></thead>
+              <tbody><template x-for="p in detailPrefixes.rows" :key="p.prefix">
+                <tr><td class="mono" x-text="p.prefix"></td>
+                  <td class="num"><template x-if="p.anyFailed"><a target="_blank" rel="noopener" :class="['prefix-flows', ...cellCls(p.failed)]" x-text="p.failed.text"
+                      :href="flowsLink({ site: appDetail.siteId, app: appDetail.appId, ip: p.prefix, ipmode: 'dest', filter: 'init_failed', last: appDetail.hours * 60 })"
+                      :title="`This app's failed connections to ${p.prefix} (Flow Search: Init OK = No)`"></a></template>
+                    <span x-show="!p.anyFailed" :class="cellCls(p.failed)" x-text="p.failed.text"></span></td>
+                  <template x-for="c in [p.unreachable, p.txn]"><td class="num"><span :class="cellCls(c)" x-text="c.text"></span></td></template></tr>
+              </template></tbody>
+            </table>
+            <p class="muted" x-show="!detailPrefixes.rows.length">No prefixes match the filter.</p>
+          </div>
+        </template>
+      </div>
+    </template>
+  </dialog>
+
+  <dialog class="ion-dialog" x-ref="ionDialog" aria-labelledby="ion-title" @click="$event.target.closest('a') && $refs.ionDialog.close()">
+    <div class="dialog-head">
+      <h2 id="ion-title">ION Connectivity Monitor</h2>
+      <button type="button" class="btn btn-sm help-btn" @click="openHelp('ion')" title="How IONs are watched: reboots, reconnects, serial watch">HELP</button>
+      <button class="icon-btn" aria-label="Close" @click="$refs.ionDialog.close()">✕</button>
+    </div>
+    <p class="small muted">The Monitor watches every ION at every site of this tenant, data centers included, while a page of
+      it is open: an ION going offline or coming back is logged here and pops up at the bottom right. It checks every 20 s;
+      turn on <strong>Watch IONs</strong> while you need a close eye: every 5 s, with an optional sound, also with this tab in the
+      background, until you turn it off or close the tab. Times are the controller's own. The log is kept by the Monitor, so
+      every browser and tab sees the same one, and it survives a restart. A change while nothing was watching (Monitor closed)
+      is logged when watching resumes, marked <em>while away</em>.</p>
+    <p class="small muted">An ION that loses power is often shown as online by the controller until it reconnects, minutes later.
+      The Monitor still catches it when it comes back: it is logged as <em>reconnected</em> at the controller's reconnect time,
+      with its reboot, but there is no pop-up when it goes offline.</p>
+    <div class="ion-controls">
+      <label class="check"><input type="checkbox" :checked="ionWatch" @change="setIonWatch($event.target.checked)"> <strong>Watch IONs</strong> (every 5 s, also in the background)</label>
+      <label class="check"><input type="checkbox" :checked="ionSound" @change="setIonSound($event.target.checked)"> Play a sound while watching (falling tones = offline, rising = back online)</label>
+      <button type="button" class="btn btn-sm" @click="testIonSound()">Test sound</button>
+      <button type="button" class="btn btn-sm" @click="clearIonLog()">Clear log</button>
+    </div>
+    <div class="ion-field">
+      <label for="ion-filter">Only alert for sites or IONs containing</label>
+      <input type="search" id="ion-filter" placeholder="Site or ION name, comma-separated" autocomplete="off"
+        :value="ionFilter" @input="setIonFilter($event.target.value)">
+      <span class="muted small" x-text="ionFilterSummary"></span>
+    </div>
+    <p class="small muted">Every event is still logged; only matching ones pop up, play the sound and are listed below. The filter
+      lasts until this tab is closed.</p>
+    <div class="ion-field">
+      <label for="ion-serials">Also watch serial numbers</label>
+      <input type="search" id="ion-serials" x-ref="ionSerials" placeholder="Serial numbers, comma-separated" autocomplete="off"
+        x-model="ionSerialsText" @change="saveIonSerials()" @keydown.enter.prevent="saveIonSerials()">
+    </div>
+    <p class="small muted">For IONs not at a site, including new ones not claimed yet: a new ION is logged the first time it
+      connects to the controller. These always pop up (the filter doesn't apply). Kept by the Monitor for this tenant; press
+      Enter or click away to save.</p>
+    <p class="small v-critical" x-show="ionLog.serialError" x-text="ionLog.serialError"></p>
+    <template x-if="ionSerialRows.length">
+      <table class="part-table ion-table">
+        <thead><tr><th>Serial</th><th>ION</th><th>Site</th><th>Controller</th></tr></thead>
+        <tbody><template x-for="r in ionSerialRows" :key="r.serial">
+          <tr><td class="mono" x-text="r.serial"></td><td x-text="r.ion"></td>
+            <td><template x-if="r.siteHref"><a :href="r.siteHref" x-text="r.site"></a></template><span class="muted" x-show="!r.siteHref" x-text="r.site"></span></td>
+            <td><span :class="r.st ? `st ${r.st}` : 'muted'"><span class="ico" aria-hidden="true" x-show="r.st" x-text="r.st === 'good' ? '●' : '✕'"></span><span x-text="r.text"></span></span></td></tr>
+        </template></tbody>
+      </table>
+    </template>
+    <p class="small muted" x-show="ionLog.serials.length && !ionLog.serialStatus">Checking the serial numbers…</p>
+    <p class="small muted ion-checked">
+      <span x-show="ionLog.checkedAt" x-text="`Checked ${ionLog.checkedAt ? hms(Date.parse(ionLog.checkedAt)) : ''}, every ${ionLog.intervalS || 20} s.`"></span>
+      <span class="v-critical" x-show="ionLog.error" x-text="`Last check failed: ${ionLog.error}`"></span>
+      After reloading the page, click anywhere on it once: browsers only play sound after a click.</p>
+    <template x-if="ionView.rows.length">
+      <table class="part-table ion-table">
+        <thead><tr><th>Time</th><th>ION</th><th>Site</th><th>Event</th>
+          <th title="For an ION back online: whether it rebooted during the outage (its last reboot time and reason), and the outage by the controller's own disconnect and reconnect times">Reboot</th></tr></thead>
+        <tbody><template x-for="r in ionView.rows" :key="r.key">
+          <tr><td class="nowrap" :title="r.timeTip" x-text="r.time"></td>
+            <td><span x-text="r.device"></span><div class="muted csub mono" x-show="r.serial && r.serial !== r.device" x-text="r.serial"></div></td>
+            <td><template x-if="r.siteHref"><a :href="r.siteHref" x-text="r.site"></a></template><span class="muted" x-show="!r.siteHref" x-text="r.site"></span></td>
+            <td><span :class="`st ${r.st}`"><span class="ico" aria-hidden="true" x-text="r.icon"></span><span x-text="r.text"></span></span>
+              <div class="muted csub" x-show="r.away" title="Found when watching resumed: the Monitor wasn't watching when it happened">while away</div></td>
+            <td :title="r.rebootTip || null"><span :class="r.rebootWarn ? 'st warning' : 'muted'" x-text="r.reboot"></span>
+              <div class="muted csub" x-show="r.controller" x-text="r.controller"></div></td></tr>
+        </template></tbody>
+      </table>
+    </template>
+    <p class="small muted" x-show="ionView.hidden" x-text="ionView.rows.length ? `${plural(ionView.hidden, 'other event')} hidden by the filter.` : `No events match the filter (${ionView.hidden} hidden).`"></p>
+    <p class="small muted" x-show="ionLog.events && !ionLog.events.length">No ION has gone offline or come back since the Monitor started watching this tenant.</p>
+  </dialog>
+
+  <dialog class="ion-dialog" x-ref="ionListDialog" aria-labelledby="ion-list-title" @click="$event.target.closest('a') && $refs.ionListDialog.close()">
+    <div class="dialog-head">
+      <h2 id="ion-list-title">IONs</h2>
+      <button class="icon-btn" aria-label="Close" @click="$refs.ionListDialog.close()">✕</button>
+    </div>
+    <p class="small muted">Every ION at every site of this tenant, by its connection to the controller. Updated every 20 s with the
+      <em>Devices online</em> tile; it costs no extra calls. Click a site for its details.</p>
+    <div class="ion-controls">
+      <div class="ov-chips" role="group" aria-label="Filter IONs by connection">
+        <template x-for="c in ionListView.chips" :key="c.key">
+          <button type="button" :class="['ov-chip', c.cls, ionList.status === c.key && 'active']"
+                  :aria-pressed="ionList.status === c.key" @click="ionList.status = c.key">
+            <span x-text="c.label"></span> <span class="n" x-text="c.n"></span>
+          </button>
+        </template>
+      </div>
+      <input type="search" class="ion-list-search" placeholder="Filter: ION, serial, site or model, comma-separated" autocomplete="off"
+        aria-label="Filter IONs" x-model="ionList.query">
+    </div>
+    <template x-if="ionListView.rows.length">
+      <table class="part-table ion-table">
+        <thead><tr><th>ION</th><th>Site</th><th>Model</th><th>Status</th>
+          <th title="The controller's last change to the ION's record, which it makes on each connect and disconnect">Since</th></tr></thead>
+        <tbody><template x-for="r in ionListView.rows" :key="r.key">
+          <tr><td><span x-text="r.name"></span><div class="muted csub mono" x-show="r.serial && r.serial !== r.name" x-text="r.serial"></div></td>
+            <td><a :href="r.siteHref" x-text="r.site"></a></td>
+            <td><span x-text="r.model"></span><div class="muted csub" x-show="r.software" x-text="r.software"></div></td>
+            <td><span :class="`st ${r.connected ? 'good' : 'critical'}`"><span class="ico" aria-hidden="true" x-text="r.connected ? '●' : '✕'"></span><span x-text="r.connected ? 'Connected' : 'Disconnected'"></span></span></td>
+            <td class="nowrap" x-text="r.since"></td></tr>
+        </template></tbody>
+      </table>
+    </template>
+    <p class="small muted" x-show="!ionListView.rows.length" x-text="ionList.status === 'disconnected' && !ionList.query ? 'Every ION is connected.' : 'No IONs match the filter.'"></p>
+  </dialog>
+
+  <!-- HELP dialog: how each section's data is gathered, one topic at a time -------------------- -->
+  <dialog id="help-dialog" class="help-dialog" x-ref="helpDialog" aria-labelledby="help-title">
+    <div class="dialog-head">
+      <h2 id="help-title" x-text="`HELP: ${helpTitle}`"></h2>
+      <button class="icon-btn" aria-label="Close" @click="$refs.helpDialog.close()">✕</button>
+    </div>
+    <nav class="help-nav" aria-label="HELP topics">
+      <template x-for="t in HELP_TOPICS" :key="t.key">
+        <button type="button" :class="['btn', 'btn-sm', helpTopic === t.key && 'active']" :aria-pressed="helpTopic === t.key"
+                @click="openHelp(t.key)" x-text="t.label"></button>
+      </template>
+    </nav>
+    <div class="help-text">
+
+      <template x-if="helpTopic === 'overview'"><div data-help="overview">
+        <p>The Overview shows every site of the tenant with what is wrong there, worst first. The Monitor builds it on the server from
+          a few tenant-wide calls (sites, ION devices, WAN circuits, active alarms and circuit utilization), so the number of calls
+          doesn't grow with the number of sites.</p>
+        <h3>Tiles</h3>
+        <dl>
+          <dt>Sites</dt><dd>Sites shown. With <em>Skip data center sites</em> on (Manage tenants → Edit), data centers are left out.</dd>
+          <dt>Site status</dt><dd>How many sites are critical, warning or OK, the active alarms, and alarms the controller couldn't tie
+            to a site (hover for what they are) or still lists for deleted sites.</dd>
+          <dt>Devices online</dt><dd>Connected IONs out of all IONs. Checked every 20 s, with one call for the whole tenant.
+            Click the number to list the connected IONs, or <em>N disconnected</em> (or <em>all connected</em>) for the
+            disconnected ones (or all), in the same list.</dd>
+          <dt>Health</dt><dd>AIOps health of sites, apps and links over the last 3 hours, the same rating SCM shows. See <em>Tenant health
+            and apps</em>. Each number is a filter: a <em>Sites</em> number shows only the sites in that health (sites AIOps hasn't
+            rated are left out), an <em>Apps</em> number opens <em>Applications</em> at that health, and a fair or poor <em>Links</em>
+            number opens <em>Health issues</em> with only those links (good links aren't listed there). Click it again to show all.</dd>
+        </dl>
+        <h3>Site status</h3>
+        <dl>
+          <dt><span class="v v-critical">Critical</span></dt><dd>An ION is disconnected, or there is a critical alarm, or a circuit is at
+            <span x-text="THRESHOLDS.util_pct[1]"></span>% or more of its capacity.</dd>
+          <dt><span class="v v-warning">Warning</span></dt><dd>A major or minor alarm, a circuit at <span x-text="THRESHOLDS.util_pct[0]"></span>%
+            or more, or no current traffic data from any circuit while the IONs are connected.</dd>
+          <dt><span class="v v-good">OK</span></dt><dd>None of these. <em>Interface down</em> alarms are listed but don't change the status:
+            they are often unused ports.</dd>
+        </dl>
+        <p>Each card lists the problems behind its status, worst first. Alarms are grouped by type, with the alarms the controller
+          rolled up under a site alarm named in brackets (as in SCM). <em>Live</em> means a circuit reported a minute in the 3 minutes
+          before the last utilization fetch; <em>Not live</em> says how long ago it last did; <em>No data</em> means no circuit has
+          reported (for example, every ION offline). Click a site for its details.</p>
+        <h3>How fresh it is</h3>
+        <p>While a page is open the server rebuilds the Overview every 60 s in the background, so the page never waits for it.
+          Utilization is fetched every 5 minutes (up to 10 circuits per query). When no page has asked for 10 minutes, the background
+          work stops. <em>Cards</em> / <em>Table</em>, the <em>Site status</em> and <em>Health</em> site numbers and the site type buttons only change the view; they cost no calls.</p>
+        <p>The site type buttons (<em>All</em> / <em>DC</em> / <em>Branch</em> / <em>Branch Gateway</em>) show only sites of that type,
+          in Cards, Table and Map alike, and combine with a <em>Site status</em> or <em>Health</em> site number (for example critical Branch Gateway sites).
+          <em>DC</em> is a data center site, <em>Branch Gateway</em> a branch with Branch Gateway on, and <em>Branch</em> the other branches.
+          With <em>Skip data center sites</em> on, <em>DC</em> shows no cards or rows; the Map still draws the data centers.</p>
+        <h3>Map</h3>
+        <p><em>Map</em> draws every site and the VPN tunnels between them, from one tenant-wide <code>topology</code> call, asked
+          for every 60 s only while the Map is shown (its link names also serve link alarms and Health). Data centers are
+          shown even when <em>Skip data center sites</em> is on. <em>Top-down</em> (the default) puts them in a row at the top, sites
+          with Branch Gateway on (diamonds) in a row below them, and the other branches along the bottom; <em>Ring</em> puts them in the middle with the branches round them. Either way branches are
+          grouped by the data centers they connect to, and the map remembers your choice. A branch's colour is its Overview status.</p>
+        <p>A line stands for every tunnel between two sites, thicker for more, coloured by the worst one: <span class="v v-critical">down</span>
+          when the controller says a tunnel isn't up, else AIOps' health of the tunnel (the same 3-hour rating as Health):
+          <span class="v v-critical">poor</span>, <span class="v v-warning">fair</span>, or <span class="v v-good">up</span>. A tunnel
+          an admin disabled (often to a standby data center) or an on-demand tunnel not in use never counts as down; a line of
+          only those is hidden unless <em>Show disabled and on-demand tunnels</em> is ticked, then drawn faint and dotted. Hover a site
+          or a line for the tunnels; click a site for its details. Drag to move the map, use the mouse wheel or + / − to zoom.
+          The <em>Site status</em> and <em>Health</em> site numbers and the filter fade the sites that don't match. Below the map, the site pairs with a tunnel down,
+          poor or fair are listed, worst first.</p>
+      </div></template>
+
+      <template x-if="helpTopic === 'tenant'"><div data-help="tenant">
+        <h3>Health and Health issues</h3>
+        <p>From <code>monitor/aiops/health</code>: AIOps' rating (good, fair, poor) of each site, app and link over the last 3 hours, as
+          SCM shows it. Asked for every 5 minutes while the Overview is shown. <strong>Health issues</strong> lists the fair and poor
+          ones, poor first; it starts collapsed and costs nothing more until you open it.</p>
+        <p>Opened, each row adds:</p>
+        <dl>
+          <dt>5-minute intervals</dt><dd>AIOps' rating of every 5-minute interval of the last 3 hours (oldest first; hover a block for
+            its time), from the same API's timeseries view.</dd>
+          <dt>Likely cause</dt><dd><strong>Estimated by this app, not by AIOps</strong>: AIOps gives no reason. For a link, two
+            <code>monitor/metrics</code> queries give its loss, latency, jitter and MOS in each interval; the cause lists what was off in
+            the fair and poor intervals compared with the good ones (loss of 0.15% or more, latency 3 ms or more over the link's median,
+            jitter of 5 ms or more and twice its median, MOS under 4). For an app: its AIOps score and sites, then at up to 3 of its
+            fair or poor sites its health counters and response times. Up to 40 links and 20 apps, cached 5 minutes.</dd>
+        </dl>
+        <h3>Applications</h3>
+        <p>Every app across the Overview's sites over the last 24 hours, from <code>monitor/applicationstats</code> (one query per 100
+          sites), with its AIOps health. Built in the background every 10 minutes, and only while the section is open; the last list
+          stays on screen while a new one builds and is saved in <code>data/cache.db</code>, so it shows at once after a restart.
+          Click a column heading to sort. The columns mean the same as in Site details' <em>Top applications</em>.</p>
+        <h3>Where an app fails</h3>
+        <p>Click an app's name for the same counts per site, over the same 24 hours and sites, most failed connections first.
+          <code>monitor/applicationstats</code> can't split by site, so this asks <code>monitor/metrics</code>: one or two queries per
+          10 sites (its limit), only when you click, kept 10 minutes. No GB column: that API doesn't report traffic volume.</p>
+        <p>Per site, <strong>Destinations</strong> opens the app's details at that site (response times, failed transactions and
+          the destination prefixes with failed connections, as in <em>Top applications</em>), and <strong>Failed flows</strong>
+          opens Flow Search for that site and app over the last 24 hours with only flows whose connection didn't complete: their
+          <em>Source IP</em> column shows which clients fail. Only Flow Search has source addresses, and it reads one site hour by
+          hour, so it isn't run for every site.</p>
+      </div></template>
+
+      <template x-if="helpTopic === 'site'"><div data-help="site">
+        <p>All circuit values come from <code>monitor/metrics</code> at its finest resolution, <strong>1-minute averages</strong> per
+          circuit (WAN interface):</p>
+        <ol>
+          <li><strong>Bandwidth</strong>: <code>BandwidthUsage</code> in Mbps, download and upload, up to 10 circuits per query.
+            Utilization is that against the circuit's configured bandwidth.</li>
+          <li><strong>Latency</strong>: <code>LqmLatency</code>, round trip (the API has no one-way latency).</li>
+          <li><strong>Jitter and loss</strong>: <code>LqmJitter</code> and <code>LqmPacketLoss</code> per direction, one circuit per query
+            (the API takes only one).</li>
+        </ol>
+        <h3>Opening a site and the period</h3>
+        <p>Opening a site fetches the last 24 hours of minutes for each circuit and keeps them on the server. The period buttons
+          (1, 4, 12, 24 h) slice the same 24 hours, so changing the period costs no calls. The series are saved to
+          <code>data/cache.db</code> every 2 minutes and when the Monitor stops: a site whose saved minutes are under 6 hours old opens
+          from them at once, and the first update fetches the minutes since.</p>
+        <h3>Figures</h3>
+        <p><em>Latest</em> is the newest minute with data; <em>p95</em> (95% of minutes were at or below it), <em>peak</em> (with its time)
+          and <em>average</em> cover the period. Latency, jitter and loss show the latest minute; hover a cell for the period's figures.
+          A utilization peak links to the site's flows 5 minutes either side of it. Colours, spikes and the bars are explained under
+          <strong>Key</strong>.</p>
+        <h3>Live updates</h3>
+        <p>A minute arrives shortly after it ends. After a new minute the page waits until the next one can exist (about 2 minutes,
+          plus 10 s), then checks every 10 s; after 3 minutes without one, every 60 s; after a failed check, again in 30 s. Each check
+          asks for the last 10 minutes. Circuits without link-quality data for 15 minutes are asked at most once a minute, and those
+          without any in 24 hours every 5 minutes. <strong>While every ION at the site is offline, no metrics are fetched</strong>;
+          updates resume when one reconnects. Tabs showing the same site share one fetch.</p>
+        <h3>Devices</h3>
+        <dl>
+          <dt>Connected</dt><dd>From the tenant's ION list, every 20 s (every 5 s while <em>Watch IONs</em> is on).</dd>
+          <dt>CPU, memory, disk, temperature</dt><dd><code>monitor/sys_metrics</code>, the newest 5-minute average, one query for the
+            site's connected IONs, every 2 minutes. Yellow / red at CPU ≥ <span x-text="DEVICE_THRESHOLDS.cpu_pct.join(' / ')"></span>%,
+            memory or disk used ≥ <span x-text="DEVICE_THRESHOLDS.mem_used_pct.join(' / ')"></span>%.</dd>
+          <dt>HA</dt><dd>Branch HA pairs: each ION's role (active or backup) and whether it sees its peer, every 2 minutes.</dd>
+          <dt>Uptime</dt><dd><code>elements/{id}/status</code>: last reboot and its reason, and connection times. Asked again when the
+            ION's record changes (every connect, disconnect and reboot) or after 10 minutes.</dd>
+          <dt>Hardware</dt><dd>Active power supply and other hardware alarms for the ION, including ones rolled up under a site alarm.</dd>
+        </dl>
+        <p class="muted">Cost while a site is open: about 2 calls per 10 circuits for bandwidth plus up to 3 per circuit for latency,
+          jitter and loss, per update; nothing for sites nobody has open.</p>
+        <p class="muted">Data centers: there is no circuit data at a data center, so its circuits and their metrics aren't asked for
+          (no API calls), and the page shows its devices, probes and alarms only. Open a branch to see its tunnels to the data center.</p>
+      </div></template>
+
+      <template x-if="helpTopic === 'probes'"><div data-help="probes">
+        <p>The branch's tunnels to the data centers with their link quality (LQM), and the synthetic probes the IONs run (HTTP, HTTPS,
+          DNS), over the period picked at the top (1, 4, 12 or 24 h). Fetched only while the section is open, and again every 5 minutes:
+          each query covers 24 hours of 1-minute values, which costs the same as one hour, so changing the period asks for nothing.</p>
+        <ol>
+          <li><strong>Tunnels</strong>: every fabric link that is up on the site's circuits (<code>topology</code>), only its active
+            tunnel (one per data center ION, <code>vpnlinks/{id}/status</code>), whether or not a probe runs over it. Two
+            <code>monitor/metrics</code> queries per tunnel: <code>LqmLatency</code>, and <code>LqmJitter</code> /
+            <code>LqmPacketLoss</code> / <code>LqmMos</code> each way. A data center runs no probes and reports no LQM, so this section
+            asks for nothing there: open a branch to see its tunnels to the data center.</li>
+          <li><strong>Which probes</strong>: the probe profiles on each circuit or its circuit label, and their probe configs (cached
+            with the tenant's configuration).</li>
+          <li><strong>Results</strong>: <code>monitor/metrics/probes</code> (probe latency and jitter), one query per probe and path:
+            direct internet, and the active tunnel of each VPN path. Up to 3 queries at a time, which the API allows without 429s.</li>
+          <li><strong>Tunnel</strong>: the tunnel's own latency (<code>LqmLatency</code> of the fabric link, branch ION to data center ION)
+            over the period. A backup tunnel that reported nothing in the period shows its newest hour in the last 24, faded.</li>
+          <li><strong>SLA limits</strong>: from the Move Flows rules of the performance policies and their threshold profiles. Values over
+            a probe's limit are red.</li>
+        </ol>
+        <dl>
+          <dt>Tunnels: Avg, Max</dt><dd>The tunnel's latency (round trip, branch ION to data center ION) over the period, from 1-minute
+            values: its average and its worst minute (hover Max for when, Avg for the newest minute and the p95). Faded: no LQM in
+            the period (an idle backup tunnel), the newest hour in the last 24.</dd>
+          <dt>Jitter, Loss, MOS in / out</dt><dd>Averages over the period into the branch / out of it.</dd>
+          <dt>VPN probes</dt><dd>The probes that run over the tunnel, with their average: red over the Move Flows SLA, yellow when slow
+            beyond the data center. "—" when none does, for example when the site's probes are direct internet only.</dd>
+          <dt>Avg, Max</dt><dd>The probe's response time over the period: its average and its slowest test (hover Max for when, Avg
+            for the newest test and the p95). Red over the probe's SLA.</dd>
+          <dt>Jitter</dt><dd>Average probe jitter over the period.</dd>
+          <dt>Beyond DC</dt><dd>VPN paths only: the delay added past the data center ION. The probe's average per round trip (an HTTP test
+            takes about 2, HTTPS 3) minus the tunnel's latency. Yellow at 50 ms or more when it's also more than the tunnel's own:
+            the slowness is upstream of the data center, which link health and tunnel LQM can't see.</dd>
+          <dt>Avg vs slowest</dt><dd>The blue bar: each path's Avg against the slowest path of the same probe, which fills the
+            width. A quick way to spot the slow path; it isn't compared with the SLA or with other probes.</dd>
+        </dl>
+      </div></template>
+
+      <template x-if="helpTopic === 'apps'"><div data-help="apps">
+        <p>Every app at the site over the selected period (1, 4, 12 or 24 h). A job on the server builds the list when you open the
+          site, keeps it 30 minutes (also in <code>data/cache.db</code>, so it shows at once after a restart), and the page checks
+          again every 30 minutes. Not at a data center: no applications are tracked there, so the section is hidden and nothing is fetched. <em>Refresh now</em> rebuilds it, at most once a minute. RTT and app unreachable are fetched only when you press their button:
+          a rebuilt list (and the site opened again later) shows them as they were loaded, with their time, until you press
+          <em>Refresh RTT</em> or <em>Refresh app unreachable</em>.</p>
+        <ol>
+          <li><strong>The list</strong>: <code>monitor/applicationstats</code>, in hourly rows plus 5-minute rows for the start of the
+            period (one or two queries). The first 25 apps show until you click <em>Show all</em> or type a filter.</li>
+          <li><strong>Load RTT</strong>: one <code>monitor/metrics</code> query per app (the API takes one app per query), for the 20 apps
+            with the most TCP flows and the TCP apps among the 25 with the most data.</li>
+          <li><strong>Load app unreachable</strong>: one <code>monitor/aggregates</code> query per app, for the same apps minus
+            <em>ssl</em>, <em>web-browsing</em> and <em>unknown</em> (never reported for them). It loads side by side with RTT.</li>
+          <li><strong>Details</strong> (per app, when you click it): two queries, kept 10 minutes.</li>
+        </ol>
+        <h3>Columns</h3>
+        <dl>
+          <dt>Application</dt><dd>The app the ION identified (custom apps too). Click it to search its flows at this site over the period.</dd>
+          <dt>Data, ↓ Down, ↑ Up</dt><dd>Traffic both ways, to the site and from the site.</dd>
+          <dt>TCP / UDP flows</dt><dd>Connections (TCP) and conversations (UDP).</dd>
+          <dt>Conn fail</dt><dd>Failed connections: TCP handshakes that didn't complete (no answer, refused or stalled). — for UDP-only apps.</dd>
+          <dt>Conn fail %</dt><dd>Failed connections as a share of TCP flows. Yellow from 2%, red from 10%. Over 50% with 20 or more
+            failures raises an <em>App connection failures</em> alarm under Active alarms (raised by this app, not the controller).</dd>
+          <dt>Failed txn</dt><dd>Request / response exchanges, inside connections that did open, that didn't complete. Not coloured: every
+            app fails some at its own rate. <em>Details</em> compares the last hour with the app's normal.</dd>
+          <dt>App unreachable</dt><dd>No TCP ACK for 60 seconds in a row. — when not fetched, none recorded, or prefix tracking is off.</dd>
+          <dt>RTT p95</dt><dd>Network round trip between the ION and the app's servers, p95 of 1-minute values (hover for avg and peak).
+            Thresholds as circuit latency (≥ <span x-text="THRESHOLDS.latency_ms.join(' / ')"></span> ms); faded with under 30 minutes of
+            data. The arrow is the trend: the last hour against the rest of the period, ↑ or ↓ when it moved 10 ms and 20% or more.</dd>
+          <dt>RTT 5 min</dt><dd>Average over the newest 5 minutes: shows a change (e.g. a path move) the p95 hides.</dd>
+          <dt>▲</dt><dd>That query failed (hover for why); it's asked again when you refresh RTT or app unreachable.</dd>
+        </dl>
+        <h3>Details</h3>
+        <dl>
+          <dt>Failed transactions</dt><dd>The app's normal (the rest of the period) against the last hour. Flagged when the last hour is
+            at least double the normal and 10 or more points above it.</dd>
+          <dt>SRT, RTT, TRT</dt><dd>Server response time (request to first reply: high SRT with normal RTT means a slow server, not the
+            network), network round trip, and UDP transaction response time (e.g. DNS). p95, average and peak of 1-minute values.</dd>
+          <dt>Destination prefixes</dt><dd>Where failed connections, app unreachable and failed transactions went. Click a failed
+            connection count for those flows. None listed: none recorded, or prefix tracking is off at the site.</dd>
+        </dl>
+        <p><strong>Failed transactions vs. retransmits</strong>: a failed transaction is an app exchange that didn't complete, with no
+          cause attached. Retransmits (Flow Search, TCP) are packets sent again, a sign of loss. Heavy retransmits on one path point to the
+          network; failures on clean flows point to the server or app.</p>
+      </div></template>
+
+      <template x-if="helpTopic === 'alarms'"><div data-help="alarms">
+        <h3>Active alarms</h3>
+        <p>The controller's standing alarms (<code>events/query</code>), from the same tenant-wide call as the Overview, every 60 s, so
+          they cost nothing extra. Alarms the controller rolled up under a site alarm are listed under it with ↳, as in SCM. Alarms
+          without a site (such as a process stopped on an ION) show at their ION's site. <em>Acknowledged</em> is the controller's
+          own flag.</p>
+        <p><em>App connection failures</em> is raised by this app from Top applications (over 50% of an app's connections failing). Its
+          <em>Acknowledge</em> is kept in this browser only and lasts until the alarm clears. <em>Hide acknowledged</em> hides those.</p>
+        <h3>Cleared alarms</h3>
+        <p>Alarms raised and cleared at the site in the last 24 hours (<code>events/query</code>, paged), checked every 2 minutes. Each raise is paired with its clear and grouped per alarm, with how often and how long in total it
+          was active. Click ▸ for each occurrence.</p>
+      </div></template>
+
+      <template x-if="helpTopic === 'ion'"><div data-help="ion">
+        <p>The Monitor watches the tenant's ION list on the server: one call for every ION at every site, shared with the device
+          checks. Every 20 s while a page is open; every 5 s while a tab has <em>Watch IONs</em> on, also from a background tab. Each
+          ION going offline or coming back is logged, at the controller's own time.</p>
+        <dl>
+          <dt>Reboot</dt><dd>20 s after an ION comes back, its status (<code>elements/{id}/status</code>) gives its last reboot and the
+            controller's disconnect and reconnect times. A reboot from 10 minutes before it went offline counts.</dd>
+          <dt>Reconnected</dt><dd>The controller sometimes never shows an ION offline (often a power loss). Its record still changes when it
+            reconnects: when it rebooted or was out for 30 s or more, it's logged as reconnected.</dd>
+          <dt>While away</dt><dd>A change that happened while nothing was watching, found when watching resumed.</dd>
+          <dt>Serial watch</dt><dd><code>machines</code>, the tenant's whole hardware list, read at most every 15 s: finds IONs not at a
+            site, and logs a new one the first time it connects.</dd>
+        </dl>
+        <p>The log (last 500 events) and the watched serials are kept in <code>data/ion-monitor-&lt;tsg&gt;.json</code>, the same in
+          every tab and browser. The page keeps one request open that the server answers the moment an event is logged, so a pop-up
+          arrives within a second or two even from a background tab.</p>
+      </div></template>
+
+      <template x-if="helpTopic === 'updates'"><div data-help="updates">
+        <p>Everything refreshes on its own while the page is open. Most checks pause while the tab is in the background and catch up
+          when you return.</p>
+        <table class="part-table">
+          <thead><tr><th>What</th><th>How often</th></tr></thead>
+          <tbody>
+            <tr><td>ION connected / disconnected</td><td>Every 20 s; every 5 s, also in the background, with <em>Watch IONs</em> on</td></tr>
+            <tr><td>Overview and active alarms</td><td>Every 60 s (circuit utilization on the Overview: every 5 minutes)</td></tr>
+            <tr><td>AIOps health (Health tile, Health issues)</td><td>Every 5 minutes</td></tr>
+            <tr><td>The tenant's applications</td><td>Every 10 minutes, while open</td></tr>
+            <tr><td>Circuit metrics (Site details)</td><td>About every minute, as each new minute arrives</td></tr>
+            <tr><td>Device health (CPU, memory, disk, HA)</td><td>Every 2 minutes; uptime when the ION changes or every 10 minutes</td></tr>
+            <tr><td>Cleared alarms</td><td>Every 2 minutes</td></tr>
+            <tr><td>LQM and Probes</td><td>Every 5 minutes, while open</td></tr>
+            <tr><td>Top applications</td><td>Every 30 minutes, or <em>Refresh now</em>; RTT and app unreachable only when you press their button</td></tr>
+            <tr><td>Configuration (WAN networks, app names, probe setup, topology)</td><td>10 minutes to 6 hours</td></tr>
+          </tbody>
+        </table>
+        <p>All calls of a tenant share one pace (5 a second, bursts of 10) and per-endpoint limits; after a 429 that endpoint slows down
+          for a minute. What you are looking at goes ahead of background work.</p>
+      </div></template>
+    </div>
+  </dialog>
+
+  <div class="toasts" aria-live="polite">
+    <template x-for="t in toasts" :key="t.id">
+      <div :class="`toast ${t.kind === 'error' ? 'down' : ''}`" role="status">
+        <span class="ico" aria-hidden="true" x-text="t.kind === 'error' ? '✕' : t.title ? '●' : '✓'"></span>
+        <div><strong x-show="t.title" x-text="t.title"></strong> <span x-text="t.text"></span><div class="muted small" x-show="t.sub" x-text="t.sub"></div></div>
+        <button class="icon-btn" aria-label="Dismiss" @click="dismiss(t.id)">✕</button>
+      </div>
+    </template>
+  </div>
+</body>
+</html>

@@ -1,0 +1,116 @@
+/* Site details: header, period picker, Key, circuits table and utilization bars. */
+
+.tile .value.value-sm { font-size: 20px; }
+
+.site { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+/* Narrow windows scroll the table sideways instead of cutting off the utilization columns. */
+.table-scroll { overflow-x: auto; position: relative; } /* relative: holds the screen-reader texts too */
+.site-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.site-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.site-head .meta { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.live-failed { font-size: 11px; }
+
+.period-pick { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.period-btn { background: none; border: 0; border-left: 1px solid var(--border); padding: 2px 9px; font: inherit; font-size: 12px;
+  color: var(--text-secondary); cursor: pointer; }
+.period-btn:first-child { border-left: 0; }
+.period-btn:hover { color: var(--text-primary); }
+.period-btn.active { background: var(--accent); color: #fff; }
+
+.notice.catching-up { display: flex; align-items: center; gap: 8px; }
+.notice.catching-up .spinner { width: 14px; height: 14px; border-width: 2px; flex: none; }
+.notice details { margin-top: 4px; }
+
+/* Key */
+.key { border-bottom: 1px solid var(--border); padding: 6px 16px; font-size: 12px; color: var(--text-secondary); }
+.key summary { cursor: pointer; font-weight: 500; }
+.key-notes p { margin: 6px 0; }
+.key-meter { display: inline-block; width: 90px; vertical-align: middle; }
+.key-meter .track { display: block; position: relative; height: 8px; background: var(--surface-2); border-radius: 4px; }
+.key-meter .fill { display: block; height: 100%; border-radius: 4px; }
+.key-fill { width: 40%; }
+.key-p95 { left: 55%; }
+.key-peak { left: 80%; }
+
+/* Circuits table */
+table.circuits { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.circuits th { text-align: left; font-size: 12px; font-weight: 500; color: var(--text-secondary); padding: 8px 16px;
+  background: var(--surface-2); vertical-align: bottom; white-space: nowrap; }
+table.circuits th.num, table.circuits td.num { text-align: right; }
+table.circuits td { padding: 7px 16px; border-top: 1px solid var(--border); vertical-align: middle; }
+table.circuits td.num { white-space: nowrap; font-size: 14px; }
+table.circuits tbody tr:first-child td { border-top: 0; }
+.cname { font-weight: 500; white-space: nowrap; }
+td.circuit .csub { font-size: 11px; }
+.na { color: var(--text-muted); }
+.unit { color: var(--text-muted); font-size: 12px; }
+.pair .sep, .cap-cell .sep { color: var(--text-muted); margin: 0 5px; }
+td.cap-cell { color: var(--text-secondary); }
+.stale.v, .stale .v { opacity: .5; }
+.stale-note { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.spike { font-size: 11px; white-space: nowrap; margin-top: 1px; }
+.no-circuits { padding: 16px; color: var(--text-muted); }
+
+/* Utilization: bar (latest), tall tick (peak), short notch below (p95); values in the legend's columns */
+td.util { width: 26%; min-width: 260px; }
+.util-stack { max-width: 320px; }
+.util-stack .track { position: relative; height: 8px; background: var(--surface-2); border-radius: 4px; margin: 4px 0 5px; }
+.util-stack .track.stale { opacity: .5; }
+.util-stack .fill { height: 100%; border-radius: 4px; background: var(--meter-fill); }
+.fill.good { background: var(--good); }
+.fill.warning { background: var(--warning); }
+.fill.critical { background: var(--critical); }
+.peak-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text-primary); border-radius: 1px; }
+.p95-tick { position: absolute; top: 60%; bottom: -5px; width: 3px; margin-left: -1.5px; background: var(--text-secondary); border-radius: 1px; }
+.util-vals, .util-legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 320px; }
+.util-vals { font-size: 12px; white-space: nowrap; }
+.util-pct { text-align: left; }
+.uh .v { font-weight: 500; }
+.util-legend { margin-top: 3px; font-size: 11px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
+.util-legend > span { display: inline-flex; align-items: center; gap: 4px; }
+.util-legend i { display: inline-block; position: relative; }
+.util-legend .lg-fill { width: 16px; height: 7px; border-radius: 3px; background: var(--good); }
+.util-legend .lg-p95 { width: 3px; height: 6px; margin-top: 6px; background: var(--text-secondary); border-radius: 1px; }
+.util-legend .lg-peak { width: 3px; height: 13px; background: var(--text-primary); border-radius: 1px; }
+
+/* Devices table and the alarm sections: compact tables under the site's header and circuits */
+.part { padding: 8px 16px 12px; border-top: 1px solid var(--border); }
+.part.devices { border-top: 0; border-bottom: 1px solid var(--border); }
+.part-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.part-head .muted { font-weight: 400; }
+.part-head + div { margin-top: 6px; }
+.part-toggle { font-weight: 600; color: var(--text-secondary); text-decoration: none; }
+.hide-acked { margin-left: 8px; font-size: 11px; font-weight: 400; display: inline-flex; align-items: center; gap: 4px; }
+.part-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.part-table th { text-align: left; font-size: 11px; font-weight: 500; color: var(--text-secondary); padding: 3px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.part-table td { padding: 4px 8px; vertical-align: top; border-bottom: 1px solid var(--border); }
+.part-table tbody:last-child tr:last-child td, .part-table tr:last-child td { border-bottom: 0; }
+.part-table th.num, .part-table td.num { text-align: right; }
+.part-table .nowrap { white-space: nowrap; }
+.part-table .csub { font-size: 11px; }
+.part-table .p-dot { display: inline-block; margin-right: 6px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.device-table td { vertical-align: middle; }
+.device-table th:first-child, .device-table td:first-child { padding-left: 0; }
+.device-table .st strong { font-weight: 600; color: var(--text-primary); }
+.device-table .serial { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; user-select: all; }
+.alarm-table .alarm-cause td { background: var(--surface-0); }
+.alarm-table .alarm-cause td:first-child { padding-left: 22px; }
+.alarm-table tbody + tbody tr:first-child td { border-top: 0; }
+.cause-arrow { color: var(--text-muted); margin-right: 4px; }
+.hist-toggle { width: 14px; margin-right: 4px; text-decoration: none; }
+.part-more { margin-top: 6px; font-size: 12px; color: var(--accent); }
+
+/* Probes: a heading row per probe (collapsed: its best and worst path), then a row per path */
+.probe-table .probe-head td { background: var(--surface-0); padding-top: 6px; }
+.probe-table td.bar { width: 90px; vertical-align: middle; }
+.tunnel-table { margin-bottom: 10px; }
+
+/* Links into Flow Search */
+.flows-link { font-size: 12px; font-weight: 500; color: var(--accent); text-decoration: none; }
+.flows-link:hover, a.peak-link:hover, a.app-flows:hover, a.prefix-flows:hover { text-decoration: underline; }
+a.peak-link { text-decoration: none; }
+a.app-flows { color: inherit; text-decoration: none; }
+a.app-flows:hover { color: var(--accent); }
+a.prefix-flows { text-decoration: none; }
+.detail-flows { margin: 6px 0 0; }

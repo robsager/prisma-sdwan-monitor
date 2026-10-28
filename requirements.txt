@@ -1,0 +1,4 @@
+flask>=3.0
+waitress>=3.0   # web server (app.py)
+requests>=2.31
+keyring>=24; sys_platform != "win32"   # client secrets in the OS keychain (manager/secret_store.py)

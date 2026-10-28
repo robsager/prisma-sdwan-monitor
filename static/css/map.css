@@ -1,0 +1,63 @@
+/* Overview: the Map view (sites and the VPN tunnels between them). */
+
+.ov-map { display: grid; gap: 10px; }
+.map-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.map-summary .v { margin-left: 6px; }
+.map-zoom { display: inline-flex; gap: 4px; }
+.map-head .check { margin-left: auto; }
+.map-zoom .btn { min-width: 30px; }
+.map-frame { position: relative; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.map-svg { display: block; width: 100%; height: min(78vh, 900px); min-height: 420px; cursor: grab; user-select: none; touch-action: none; }
+.map-svg.dragging { cursor: grabbing; }
+
+/* Edges: the visible line and a wide invisible one to hover. */
+.edge .line { fill: none; stroke-linecap: round; }
+.edge .hit { fill: none; stroke: transparent; stroke-width: 10; }
+.e-up .line, .lg-e.e-up { stroke: color-mix(in srgb, var(--good) 55%, transparent); }
+.e-fair .line, .lg-e.e-fair { stroke: var(--warning); }
+.e-poor .line, .lg-e.e-poor { stroke: var(--critical); }
+.e-down .line, .lg-e.e-down { stroke: var(--critical); stroke-dasharray: 6 4; }
+.e-unknown .line { stroke: var(--text-muted); stroke-dasharray: 2 4; }
+.e-off .line, .lg-e.e-off { stroke: var(--text-muted); stroke-dasharray: 1 4; opacity: .6; }
+.lg-e { stroke-width: 2.5; }
+
+/* Nodes: branches are circles, data centers rounded squares; the fill is the Overview status. */
+.node { cursor: pointer; }
+.node .shape { stroke: var(--surface-1); stroke-width: 2; }
+.node.n-good .shape, .lg-good { fill: var(--good); }
+.node.n-warning .shape { fill: var(--warning); }
+.node.n-critical .shape { fill: var(--critical); }
+.node.n-none .shape { fill: var(--text-muted); }
+.node.hub .shape, .lg-hub { stroke: var(--text-primary); stroke-width: 2; }
+.node.hub.n-none .shape, .lg-hub { fill: var(--accent); }
+.node.disabled { opacity: .45; }
+.node .label { font-size: 11px; fill: var(--text-secondary); pointer-events: none; }
+.node.hub .label { font-size: 12px; font-weight: 600; fill: var(--text-primary); }
+.node.gw .shape, .lg-gw { stroke: var(--text-primary); stroke-width: 1.5; }
+.lg-gw { fill: var(--good); }
+.node.gw .label { font-weight: 600; fill: var(--text-primary); }
+/* A halo, so the name stays readable over the lines. */
+.node.hub .label, .node.gw .label { paint-order: stroke; stroke: var(--surface-1); stroke-width: 4px; stroke-linejoin: round; }
+.node:focus-visible { outline: none; }
+.node:focus-visible .shape { stroke: var(--accent); stroke-width: 3; }
+
+/* Filtered out, and hover: everything but the hovered site, its tunnels and neighbours fades. */
+.dim { opacity: .15; }
+.map-svg.hl .edge:not(.on), .map-svg.hl .node:not(.on) { opacity: .12; }
+.map-svg.hl .edge.on .line { stroke-width: 3.5; }
+.map-svg.hl .node.on .label { fill: var(--text-primary); font-weight: 600; }
+
+.map-tip { position: absolute; z-index: 2; pointer-events: none; max-width: 420px; padding: 8px 10px; font-size: 12px; line-height: 1.4;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .15); }
+.map-tip .t-title { font-weight: 600; font-size: 13px; }
+.map-tip .t-sub { color: var(--text-muted); }
+.map-tip .t-critical, .map-tip .t-down, .map-tip .t-poor { color: var(--critical-text); }
+.map-tip .t-warning, .map-tip .t-fair { color: var(--warning-text); }
+.map-tip .t-good, .map-tip .t-up { color: var(--good-text); }
+
+.map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12px; color: var(--text-secondary); }
+.map-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.map-legend svg { width: 16px; height: 16px; }
+.map-legend svg[viewBox^="0 0 24"] { width: 24px; height: 8px; }
+.map-problems { margin-top: 4px; }
+.map-problems tbody tr { cursor: default; box-shadow: none; }
