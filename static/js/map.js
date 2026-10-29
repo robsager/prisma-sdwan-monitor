@@ -146,7 +146,7 @@ export const topologyMap = () => ({
     this.bindMapControls(svg);
   },
 
-  // Highlight a node or edge with its neighbours (ids) and edges; no args clears it.
+  // Highlight a node or edge with its neighbors (ids) and edges; no args clears it.
   mapHover(svg, ids = null, edges = []) {
     svg.classList.toggle("hl", !!ids);
     for (const x of svg.querySelectorAll(".on")) x.classList.remove("on");

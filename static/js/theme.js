@@ -1,5 +1,5 @@
 // Light/dark theme, shared by the Dashboard and Flow Search. The header toggle cycles
-// Auto -> Light -> Dark; Auto (the default) follows the OS colour-scheme setting.
+// Auto -> Light -> Dark; Auto (the default) follows the OS color-scheme setting.
 // Loaded in <head> so data-theme is set before first paint (no flash of the wrong theme).
 (function () {
   const KEY = 'sdwan.theme';
@@ -22,7 +22,7 @@
 
   window.toggleTheme = function () {
     const next = MODES[(MODES.indexOf(mode()) + 1) % MODES.length];
-    // Auto is stored as no entry, so a missing or unrecognised value means "follow the OS".
+    // Auto is stored as no entry, so a missing or unrecognized value means "follow the OS".
     if (next === 'auto') localStorage.removeItem(KEY); else localStorage.setItem(KEY, next);
     apply();
   };

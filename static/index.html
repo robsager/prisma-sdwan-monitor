@@ -388,13 +388,13 @@
                   <div class="map-legend">
                     <span><svg viewBox="-8 -8 16 16" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" rx="2" class="lg-hub"/></svg>Data center</span>
                     <span><svg viewBox="-8 -8 16 16" aria-hidden="true"><path d="M0 -7L7 0L0 7L-7 0Z" class="lg-gw"/></svg>Branch Gateway</span>
-                    <span><svg viewBox="-8 -8 16 16" aria-hidden="true"><circle r="5" class="lg-good"/></svg>Branch (colour: site status)</span>
+                    <span><svg viewBox="-8 -8 16 16" aria-hidden="true"><circle r="5" class="lg-good"/></svg>Branch (color: site status)</span>
                     <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-up"/></svg>Tunnel up</span>
                     <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-fair"/></svg>Health fair</span>
                     <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-poor"/></svg>Health poor</span>
                     <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-down"/></svg>Down</span>
                     <span><svg viewBox="0 0 24 8" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" class="lg-e e-off"/></svg>Disabled or on demand</span>
-                    <span class="muted">A line is every tunnel between two sites, coloured by the worst; thicker means more tunnels.</span>
+                    <span class="muted">A line is every tunnel between two sites, colored by the worst; thicker means more tunnels.</span>
                   </div>
                   <template x-if="mapProblems.length">
                     <table class="ov-table map-problems">
@@ -512,7 +512,7 @@
                     <p><strong>Values</strong> show each circuit's newest complete minute, normally about a minute behind and updated live.
                       A circuit that stops reporting keeps its last minute, faded, with “Not live”. Peak, p95, average and spikes cover the
                       period (<span x-text="`${siteCtx.hours} h`"></span>); hover a cell for the details. p95 is a level (95% of minutes were at or below it), not a moment.</p>
-                    <p><strong>Colours</strong>: <span class="v v-good">green OK</span> · <span class="v v-warning">yellow warning</span> ·
+                    <p><strong>Colors</strong>: <span class="v v-good">green OK</span> · <span class="v v-warning">yellow warning</span> ·
                       <span class="v v-critical">red critical</span>: latency ≥ <span x-text="THRESHOLDS.latency_ms.join(' / ')"></span> ms ·
                       jitter ≥ <span x-text="THRESHOLDS.jitter_ms.join(' / ')"></span> ms · loss ≥ <span x-text="THRESHOLDS.loss_pct.join(' / ')"></span>% ·
                       utilization ≥ <span x-text="THRESHOLDS.util_pct.join(' / ')"></span>%.</p>
@@ -1236,8 +1236,8 @@
           for every 60 s only while the Map is shown (its link names also serve link alarms and Health). Data centers are
           shown even when <em>Skip data center sites</em> is on. <em>Top-down</em> (the default) puts them in a row at the top, sites
           with Branch Gateway on (diamonds) in a row below them, and the other branches along the bottom; <em>Ring</em> puts them in the middle with the branches round them. Either way branches are
-          grouped by the data centers they connect to, and the map remembers your choice. A branch's colour is its Overview status.</p>
-        <p>A line stands for every tunnel between two sites, thicker for more, coloured by the worst one: <span class="v v-critical">down</span>
+          grouped by the data centers they connect to, and the map remembers your choice. A branch's color is its Overview status.</p>
+        <p>A line stands for every tunnel between two sites, thicker for more, colored by the worst one: <span class="v v-critical">down</span>
           when the controller says a tunnel isn't up, else AIOps' health of the tunnel (the same 3-hour rating as Health):
           <span class="v v-critical">poor</span>, <span class="v v-warning">fair</span>, or <span class="v v-good">up</span>. A tunnel
           an admin disabled (often to a standby data center) or an on-demand tunnel not in use never counts as down; a line of
@@ -1296,7 +1296,7 @@
         <h3>Figures</h3>
         <p><em>Latest</em> is the newest minute with data; <em>p95</em> (95% of minutes were at or below it), <em>peak</em> (with its time)
           and <em>average</em> cover the period. Latency, jitter and loss show the latest minute; hover a cell for the period's figures.
-          A utilization peak links to the site's flows 5 minutes either side of it. Colours, spikes and the bars are explained under
+          A utilization peak links to the site's flows 5 minutes either side of it. Colors, spikes and the bars are explained under
           <strong>Key</strong>.</p>
         <h3>Live updates</h3>
         <p>A minute arrives shortly after it ends. After a new minute the page waits until the next one can exist (about 2 minutes,
@@ -1381,7 +1381,7 @@
           <dt>Conn fail</dt><dd>Failed connections: TCP handshakes that didn't complete (no answer, refused or stalled). — for UDP-only apps.</dd>
           <dt>Conn fail %</dt><dd>Failed connections as a share of TCP flows. Yellow from 2%, red from 10%. Over 50% with 20 or more
             failures raises an <em>App connection failures</em> alarm under Active alarms (raised by this app, not the controller).</dd>
-          <dt>Failed txn</dt><dd>Request / response exchanges, inside connections that did open, that didn't complete. Not coloured: every
+          <dt>Failed txn</dt><dd>Request / response exchanges, inside connections that did open, that didn't complete. Not colored: every
             app fails some at its own rate. <em>Details</em> compares the last hour with the app's normal.</dd>
           <dt>App unreachable</dt><dd>No TCP ACK for 60 seconds in a row. — when not fetched, none recorded, or prefix tracking is off.</dd>
           <dt>RTT p95</dt><dd>Network round trip between the ION and the app's servers, p95 of 1-minute values (hover for avg and peak).

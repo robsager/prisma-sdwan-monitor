@@ -126,7 +126,7 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 
 .tile .value .of { font-size: 16px; color: var(--text-muted); font-weight: 400; }
 
-/* Threshold colours for every metric value (text-contrast steps of the status palette) */
+/* Threshold colors for every metric value (text-contrast steps of the status palette) */
 .v-good { color: var(--good-text); }
 .v-warning { color: var(--warning-text); }
 .v-critical { color: var(--critical-text); }

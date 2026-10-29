@@ -40,7 +40,7 @@ export const connPct = (a) => (a.tcp_flows ? (a.failed_connections || 0) / a.tcp
 export const pctTxt = (p) => (p == null ? "—" : p > 0 && p < 0.1 ? "<0.1%" : `${fmt(p, p < 10 ? 1 : 0)}%`);
 export const udpFlows = (a) => (a.flows == null ? null : a.flows - (a.tcp_flows || 0));
 
-// A cell: { text, v (a value: bold), st (status colour), muted, faded, tip, sr (screen-reader suffix), trend? }
+// A cell: { text, v (a value: bold), st (status color), muted, faded, tip, sr (screen-reader suffix), trend? }
 const cell = (text, extra = {}) => ({ text, v: false, st: null, muted: false, faded: false, tip: "", sr: "", ...extra });
 const muted = (text, tip = "") => cell(text, { muted: true, tip });
 const flagged = (st) => (st === "warning" || st === "critical" ? ` (${STATUS_LABEL[st].toLowerCase()})` : "");
@@ -105,7 +105,7 @@ export const APP_COLS = [
   { key: "tcp_flows", label: "TCP flows", value: (a) => a.tcp_flows ?? -1, cell: (a) => countCell(a.tcp_flows) },
   { key: "udp_flows", label: "UDP flows", value: (a) => udpFlows(a) ?? -1, cell: (a) => countCell(udpFlows(a)) },
   { key: "failed_connections", label: "Conn fail", title: "Failed connections over the selected period: the TCP 3-way handshake didn't complete",
-    value: (a) => a.failed_connections ?? -1, // not coloured: Conn fail % is the indicator
+    value: (a) => a.failed_connections ?? -1, // not colored: Conn fail % is the indicator
     cell: (a) => (a.flows != null && !a.tcp_flows ? muted("—", "UDP only: no TCP handshakes to fail") : countCell(a.failed_connections)) },
   { key: "conn_pct", label: "Conn fail %", title: "Failed connections as a share of the app's TCP flows", value: (a) => connPct(a) ?? -1, cell: connPctCell },
   { key: "failed_txn", label: "Failed txn", title: "Failed transactions over the selected period. Every app fails some normally; Details shows the rate against this app's normal",
