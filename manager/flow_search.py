@@ -233,9 +233,10 @@ class FlowSearch:
     # ---- what the search form and table name --------------------------------------------------------
 
     def sites(self):
-        """Sites that can be searched: active and not a data center (as 1.x), by name."""
-        return sorted(({"id": s["id"], "name": s.get("name") or s["id"]} for s in self.svc.sites()
-                       if s.get("admin_state") == "active" and s.get("element_cluster_role") != "HUB"),
+        """Sites that can be searched: every site but data centers, by name. Disabled ones too: their
+        flows from before they were disabled can still be searched; admin_state says which they are."""
+        return sorted(({"id": s["id"], "name": s.get("name") or s["id"], "admin_state": s.get("admin_state")}
+                       for s in self.svc.sites() if s.get("element_cluster_role") != "HUB"),
                       key=lambda s: s["name"].lower())
 
     def apps(self):
