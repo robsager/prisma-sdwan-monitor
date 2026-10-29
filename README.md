@@ -18,6 +18,12 @@ app's servers: p95 over the period with its trend, and the average over the last
 
 ![Site details](docs/screenshots/site-details.png)
 
+**Site details, app Details:** one app at the site: data, flows, failed connections, failed transactions (the last hour
+against the app's normal rate), app unreachable, response times (SRT, RTT, UDP TRT) and the destination prefixes the
+failures went to.
+
+![Site details, app Details](docs/screenshots/app-details.png)
+
 **Flow Search:** flow records for one or more sites: time, source and destination IP and port, protocol, user, app,
 domain, direction, path, path changes and Flow Move, path / QoS / security policy, RTT, server and UDP response times,
 bytes and packets (each direction and total), duration, TCP retransmits, voice jitter / loss / MOS, action and drop
