@@ -7,23 +7,21 @@ Not an official Palo Alto Networks product; provided as-is under the [MIT licenc
 
 ## Screenshots
 
-**Overview, Health issues:** the fair and poor sites, links and apps from Prisma AIOps, with the likely cause.
-
-![Overview, Health issues](docs/screenshots/overview-tenant.png)
-
-**Overview, Applications:** the applications across all sites, sorted by the highest connection failure percentage.
-
-![Overview, Applications sorted by Conn fail %](docs/screenshots/apps-conn-fail.png)
-
 **Overview, Map view:** the sites and the VPN tunnels between them, coloured by state and health.
 
 ![Overview, map view](docs/screenshots/overview-map.png)
 
-**Site details:** devices, circuits (latency, jitter, loss, p95 and peak use), LQM and probes, and top applications.
+**Site details:** devices, circuits (latency, jitter, loss, p95 and peak use), LQM and probes, and top applications
+with data, flows, failed connections, failed transactions (request / response exchanges that didn't complete, inside
+connections that did open), app unreachable (no TCP ACK for 60 seconds in a row) and RTT (the network round trip to the
+app's servers: p95 over the period with its trend, and the average over the last 5 minutes).
 
 ![Site details](docs/screenshots/site-details.png)
 
-**Flow Search:** flow records for one or more sites, with policy, path and app names.
+**Flow Search:** flow records for one or more sites: time, source and destination IP and port, protocol, user, app,
+domain, direction, path, path changes and Flow Move, path / QoS / security policy, RTT, server and UDP response times,
+bytes and packets (each direction and total), duration, TCP retransmits, voice jitter / loss / MOS, action and drop
+reason, end reason, connection setup, return traffic and security action.
 
 ![Flow Search](docs/screenshots/flow-search.png)
 
@@ -34,6 +32,14 @@ Not an official Palo Alto Networks product; provided as-is under the [MIT licenc
 **Flow Search, Apps summary:** the applications seen in the results, with the domains seen for each.
 
 ![Flow Search, Apps summary](docs/screenshots/flow-apps.png)
+
+**Overview, Health issues:** the fair and poor sites, links and apps from Prisma AIOps, with the likely cause.
+
+![Overview, Health issues](docs/screenshots/overview-tenant.png)
+
+**Overview, Applications:** the applications across all sites, sorted by the highest connection failure percentage.
+
+![Overview, Applications sorted by Conn fail %](docs/screenshots/apps-conn-fail.png)
 
 ## Flow Search fields
 
