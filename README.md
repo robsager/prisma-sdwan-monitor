@@ -35,6 +35,67 @@ Not an official Palo Alto Networks product; provided as-is under the [MIT licenc
 
 ![Flow Search, Apps summary](docs/screenshots/flow-apps.png)
 
+## Flow Search fields
+
+**Search** (sent to the API, so fewer flows are fetched): sites, time range, IP address (source, destination or
+either), destination ports, protocol (TCP, UDP, ICMP) and applications. Searches over 4 hours need an application or IP
+address filter.
+
+**Results table:** every column can be searched and filtered: click its ▾, type in **Search values…** to find values,
+then pick the ones to show (**Select matches** picks everything the search found). Every column except Security sorts
+when you click its header. There is also a **Filter by IP** box (source, destination or either) and **Show only**
+buttons: *Init failed*, *No return traffic* and *Flow moved*.
+
+The columns, by their **Add columns** button:
+
+| Button | Columns |
+| --- | --- |
+| *(shown by default)* | Site, Time, Source IP, Src Port, Dest IP, Dst Port, Proto, App, Domain, Path, Init OK, Return, Security |
+| UserID | User |
+| AppStats | Avg RTT, Avg SRT, Avg UDP TRT |
+| Policy | Path Policy, QoS Policy, Security Policy |
+| Voice | Jitter, Loss, MOS |
+| TotalFlowStats | Total Bytes, Total Packets |
+| DirectionalFlowStats | Bytes C2S, Bytes S2C, Packets C2S, Packets S2C |
+| Retransmits | Retx Pkts, Retx %, Retx Bytes |
+| Path Change | Path Change, Assurance |
+| Duration | *(same name)* |
+| Action | *(same name)* |
+| End Reason | *(same name)* |
+| *(Columns menu only)* | Direction |
+
+- **Path Change:** why the flow moved to another WAN path mid-way, e.g. an SLA breach, the path going down, or
+  asymmetry (`asymmetry_path_change`, `probe_bad_path_change`). Blank: it stayed on one path. Underneath, *from …* is the
+  path it was on before, when the search goes back far enough; hover for every path with times.
+- **Assurance:** *Flow Move* when a performance policy rule with the *Move Flows* action put the flow on its path, e.g.
+  because another path broke the rule's SLA (same as SCM's *Assurance: Flow Move*). Underneath, *from …* is the path it
+  was kept off and why: *app RTT*, *app unreachable*, or a probe (e.g. *probe: high RTT*).
+- **Action:** what the ION did with the flow: forwarded, or `flow_drop`. Dropped flows show why underneath: a firewall
+  TCP state violation (the first packet seen wasn't a SYN), a security policy deny (with the rule), no security zone on
+  the source interface, no allowed path up, or no path allowed by the path policy. Hover for details.
+- **End Reason:** how the session ended: `tcp-fin` (normal close), `tcp-rst-from-client` / `tcp-rst-from-server`
+  (reset), `aged-out` (idle timeout). *n/a*: not reported (ION software before 6.8).
+- **Init OK:** the record's `init_success` field: whether the ION saw the TCP 3-way handshake complete. **Yes**: it
+  completed. **No**: it did not (no answer, a refusal, or a half-finished handshake). **-**: not reported, i.e. it
+  doesn't apply (UDP, ICMP).
+- **Return:** what came back from the server, worked out from the record's packet counts and TCP flags, checked in this
+  order:
+  1. **Dropped**: Action is `flow_drop` (the ION dropped the flow itself; Action says why).
+  2. **-**: no packets in either direction.
+  3. **No**: the client sent packets but the server sent none (forwarded, but nothing came back).
+  4. **Reset**: every server packet was a TCP reset (nothing listening on that port, or a host firewall rejected it).
+  5. **SYN-ACK only**: Init OK is No and every server packet was a SYN-ACK (the server accepted, but the client never
+     sent the final ACK, or its ACK took a path the ION didn't see).
+  6. **Yes**: anything else; the server sent data back.
+
+  Read together when Init OK is No: Return = **No** means nothing answered, so look at the network path (routing, a
+  firewall or policy drop, the host down). **Reset** or **SYN-ACK only** means the server is reachable but refused or
+  the handshake stalled, so look at the service or port.
+- **Security:** the security policy action(s) applied to the flow, e.g. `allow`, `deny`, `deny_unknown_source_zone`.
+  Taken from the actions of the security rules on the record (`security_policy_rules`), or, when there are none, from
+  `sec_policy_actions`; several different actions are listed comma-separated, and **-** means none were reported. The
+  rule name itself is in the Security Policy column.
+
 ## Start
 
 You need Python 3.10 or newer. Open a terminal in the Monitor's folder and run:
