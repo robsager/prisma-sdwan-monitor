@@ -59,7 +59,7 @@
                 <input type="search" x-model="siteSearch" placeholder="Search sites…" aria-label="Search sites">
                 <div class="picker-list">
                   <template x-for="s in siteMatches" :key="s.id">
-                    <label class="picker-item"><input type="checkbox" :checked="selectedSites.includes(s.id)" @change="toggleIn(selectedSites, s.id)"><span x-text="s.name"></span></label>
+                    <label class="picker-item"><input type="checkbox" :checked="selectedSites.includes(s.id)" @change="toggleIn(selectedSites, s.id)"><span x-text="s.name"></span><span class="muted" x-show="s.admin_state && s.admin_state !== 'active'" x-text="` (${s.admin_state})`"></span></label>
                   </template>
                   <div class="picker-empty" x-show="!siteMatches.length">No sites match</div>
                 </div>
