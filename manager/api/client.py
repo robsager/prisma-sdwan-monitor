@@ -5,7 +5,7 @@ Handles what the SASE API requires:
     or once on a 401
   * GET /sdwan/v2.1/api/profile after every new token (otherwise SD-WAN calls return 403)
   * X-PANW-Region on /sdwan/monitor/ calls: the tenant's x_panw_region, else its telemetry_region mapped
-  * Pacing (rate limit + per-endpoint concurrency) and retries on 429 / 5xx, honouring Retry-After;
+  * Pacing (rate limit + per-endpoint concurrency) and retries on 429 / 5xx, honoring Retry-After;
     a 429 pauses that endpoint family for every caller and lowers its concurrency for a while
 """
 import random

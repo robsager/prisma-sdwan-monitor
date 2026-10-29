@@ -3,11 +3,11 @@
 A dashboard for your Prisma SD-WAN tenants that runs on your own computer: site status, circuit health, devices, top
 applications, alarms, an ION connectivity monitor and flow search. Switch between several tenants.
 
-Not an official Palo Alto Networks product; provided as-is under the [MIT licence](LICENSE).
+Not an official Palo Alto Networks product; provided as-is under the [MIT license](LICENSE).
 
 ## Screenshots
 
-**Overview, Map view:** the sites and the VPN tunnels between them, coloured by state and health.
+**Overview, Map view:** the sites and the VPN tunnels between them, colored by state and health.
 
 ![Overview, map view](docs/screenshots/overview-map.png)
 
@@ -163,7 +163,7 @@ The Monitor has two parts, both on your computer.
   never calls Prisma itself.
 - Draws the pages: the Overview's cards and table, Site details' tables and bars, filters, sorting, paging, the
   period choice, HELP, and the light / dark theme.
-- Works out what is only about display: cell colours and statuses from the server's figures, Flow Search's column
+- Works out what is only about display: cell colors and statuses from the server's figures, Flow Search's column
   filters, sorting and summaries, and CSV export.
 - Keeps your view settings (sort, filters, collapsed sections, acknowledged app alarms) in the browser.
 - Shows the ION Connectivity Monitor's alerts, pop-ups and sound as soon as the server reports an event.

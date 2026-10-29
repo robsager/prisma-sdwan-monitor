@@ -1,5 +1,5 @@
 // The Overview's Map, free of the DOM: sites as nodes, the VPN links between them as edges (one per
-// pair of sites, coloured by its worst tunnel), and a hub layout around the data centers.
+// pair of sites, colored by its worst tunnel), and a hub layout around the data centers.
 //
 // topo = the server's /topology response: { sites: [{id, name, role, admin_state, city, country}],
 //   links: [{id, type, status, admin_up, ends: [{site_id, site, circuit}] x2, vpnlinks}] }.
@@ -128,7 +128,7 @@ export function mapLayout(graph, mode = "ring") {
     bend: (a, b) => ({ x: (a.x + b.x) * 0.3, y: (a.y + b.y) * 0.3 }) };  // toward the middle, off the ring
 }
 
-// Spread xs (sorted) to at least gap apart, then shift them back so the row stays centred on where
+// Spread xs (sorted) to at least gap apart, then shift them back so the row stays centered on where
 // they wanted to be.
 function spread(xs, gap) {
   const out = [...xs];

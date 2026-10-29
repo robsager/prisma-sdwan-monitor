@@ -79,7 +79,7 @@ export function latencyCell(c, ctx) {
   };
 }
 
-// Jitter or loss: download / upload in one cell, each coloured by its own threshold; loss has spikes.
+// Jitter or loss: download / upload in one cell, each colored by its own threshold; loss has spikes.
 export function pairCell(c, base, ctx) {
   const down = c.metrics?.[`${base}_down`], up = c.metrics?.[`${base}_up`];
   const def = METRIC[base];

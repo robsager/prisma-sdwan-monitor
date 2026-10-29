@@ -41,7 +41,7 @@
 .node:focus-visible { outline: none; }
 .node:focus-visible .shape { stroke: var(--accent); stroke-width: 3; }
 
-/* Filtered out, and hover: everything but the hovered site, its tunnels and neighbours fades. */
+/* Filtered out, and hover: everything but the hovered site, its tunnels and neighbors fades. */
 .dim { opacity: .15; }
 .map-svg.hl .edge:not(.on), .map-svg.hl .node:not(.on) { opacity: .12; }
 .map-svg.hl .edge.on .line { stroke-width: 3.5; }
