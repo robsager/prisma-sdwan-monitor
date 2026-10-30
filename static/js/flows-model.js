@@ -597,6 +597,21 @@ export function summaryRows(data, search, by) {
 
 // ---- CSV ------------------------------------------------------------------------------------------
 
+const csvEsc = (val) => {
+  const s = String(val ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+// A summary as shown (search and sort applied, collapsed groups included): one row per sub-row with
+// its group, raw flows and bytes ('(no domain)' as empty).
+export function summaryCsvText(mode, rows) {
+  const lines = [[SUMMARIES[mode].groupHead, "Domain", "Flows", "Bytes"].map(csvEsc).join(",")];
+  for (const g of rows) {
+    for (const s of g.subs) lines.push([g.label, s.name === NO_DOMAIN ? "" : s.name, s.flows, s.bytes].map(csvEsc).join(","));
+  }
+  return lines.join("\n");
+}
+
 // The shown columns, with the table's values ('-' as empty) except raw numbers for bytes, packets and
 // ms, and extra columns for what the table shows on a second line or in a tooltip.
 export function csvText(names, flows, visibleKeys) {
@@ -632,11 +647,7 @@ export function csvText(names, flows, visibleKeys) {
     const [head, get] = CSV[key] || [];
     return [[head || label[key], get || ((f) => { const v = columnValue(names, key, f); return v === "-" ? "" : v; })], ...(EXTRA[key] || [])];
   });
-  const esc = (val) => {
-    const s = String(val ?? "");
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return [fields.map(([h]) => esc(h)).join(","), ...flows.map((f) => fields.map(([, get]) => esc(get(f))).join(","))].join("\n");
+  return [fields.map(([h]) => csvEsc(h)).join(","), ...flows.map((f) => fields.map(([, get]) => csvEsc(get(f))).join(","))].join("\n");
 }
 
 // ---- the API query a search sends ------------------------------------------------------------------

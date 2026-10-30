@@ -31,7 +31,8 @@ reason, end reason, connection setup, return traffic and security action.
 
 ![Flow Search](docs/screenshots/flow-search.png)
 
-**Flow Search, Domains summary:** the domains seen in the results, grouped by organization.
+**Flow Search, Domains summary:** the domains seen in the results, grouped by organization. **Download CSV** saves
+the list (one row per domain, with its organization, flows and bytes).
 
 ![Flow Search, Domains summary](docs/screenshots/flow-domains.png)
 

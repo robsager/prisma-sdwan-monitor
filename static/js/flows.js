@@ -708,6 +708,10 @@ document.addEventListener("alpine:init", () => {
         if (!this.filteredFlows.length) return;
         saveFile(M.csvText(this.namesNow, this.filteredFlows, this.visibleKeys), "text/csv;charset=utf-8", `flows-${fileStamp()}.csv`);
       },
+      downloadSummaryCsv() {
+        if (!this.summaryRows.length) return;
+        saveFile(M.summaryCsvText(this.summary.mode, this.summaryRows), "text/csv;charset=utf-8", `${this.summary.mode}-${fileStamp()}.csv`);
+      },
       showApiQuery() {
         this.apiQueryText = JSON.stringify(M.apiQuery(this.searched, this.searched.page_size), null, 2);
         this.$refs.queryDialog.showModal();

@@ -363,6 +363,7 @@
     <div class="dialog-head">
       <h2 id="summary-title" x-text="summaryCfg?.title || 'Summary'"></h2>
       <span><button type="button" class="btn btn-sm" x-show="searching" @click="refreshSummary()" title="Include flows that arrived since this was opened">Refresh</button>
+        <button type="button" class="btn btn-sm" x-show="summaryRows.length" @click="downloadSummaryCsv()" title="Every row shown (search and sort applied), one line per domain">Download CSV</button>
         <button type="button" class="icon-btn" @click="$refs.summaryDialog.close()" aria-label="Close">✕</button></span>
     </div>
     <template x-if="summary.mode && summary.data">
